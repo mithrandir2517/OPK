@@ -28,6 +28,36 @@ export type SavedMemory = {
   createdAt: string;
 };
 
+export type UserProfile = {
+  name: string;
+  avatarInitial: string;
+  avatarColor: string;
+  notificationsEnabled: boolean;
+};
+
+export type PartyState = {
+  name: string;
+  city: string;
+  members: string[];
+  inviteCode: string;
+};
+
+export type PivoState = {
+  place: string;
+  time: string;
+  note: string;
+  reply: 'Jdu' | 'Možná' | 'Dnes ne';
+  arrival: string;
+};
+
+export type ActivityVote = {
+  uid: string;
+  displayName: string;
+  choice: string;
+  arrival?: string;
+  updatedAt: string;
+};
+
 export type NewsItem = {
   title: string;
   summary: string;

@@ -12,6 +12,9 @@ import {
   View,
   StatusBar as NativeStatusBar,
 } from 'react-native';
+import * as WebBrowser from 'expo-web-browser';
+import * as Google from 'expo-auth-session/providers/google';
+import { GoogleAuthProvider, onAuthStateChanged, signInWithCredential, signOut } from 'firebase/auth';
 import { ActivityPanel } from './src/components/ActivityPanel';
 import { AppMenu } from './src/components/AppMenu';
 import { OpkLogo } from './src/components/OpkLogo';
@@ -21,29 +24,98 @@ import { KronikaScreen } from './src/screens/KronikaScreen';
 import { PartyScreen } from './src/screens/PartyScreen';
 import { ProfilScreen } from './src/screens/ProfilScreen';
 import { ZpravyScreen } from './src/screens/ZpravyScreen';
+import { savePartySync, savePivoSync, subscribePartySync, subscribePivoSync } from './src/backend/opkSync';
+import { saveActivityVoteSync, subscribeActivityVotesSync } from './src/backend/pollSync';
 import { loadJson, saveJson, storageKeys } from './src/storage/localStorage';
-import { ActivityKey, SectionKey } from './src/types';
+import { ActivityKey, ActivityVote, PartyState, PivoState, SectionKey, UserProfile } from './src/types';
+import {
+  firebaseAuth,
+  firebaseEnabled,
+  googleAndroidClientId,
+  googleWebClientId,
+} from './src/backend/firebase';
+
+WebBrowser.maybeCompleteAuthSession();
 
 const sectionKeys: SectionKey[] = ['obed', 'pivo', 'kolo', 'kronika', 'zpravy', 'profil', 'party'];
+const defaultProfile: UserProfile = {
+  name: 'Marek',
+  avatarInitial: 'M',
+  avatarColor: '#F8B84E',
+  notificationsEnabled: true,
+};
+const defaultParty: PartyState = {
+  name: 'Parta Vyškov',
+  city: 'Vyškov',
+  members: ['Marek', 'Tomáš', 'Pavel'],
+  inviteCode: 'OPK-VYSKOV',
+};
 
 function isSectionKey(value: unknown): value is SectionKey {
   return typeof value === 'string' && sectionKeys.includes(value as SectionKey);
+}
+
+function normalizeProfile(value: Partial<UserProfile> | null): UserProfile {
+  const name = typeof value?.name === 'string' && value.name.trim() ? value.name : defaultProfile.name;
+  const initial =
+    typeof value?.avatarInitial === 'string' && value.avatarInitial.trim()
+      ? value.avatarInitial.trim().slice(0, 1).toUpperCase()
+      : name.trim().slice(0, 1).toUpperCase();
+
+  return {
+    name,
+    avatarInitial: initial || defaultProfile.avatarInitial,
+    avatarColor:
+      typeof value?.avatarColor === 'string' && value.avatarColor.trim()
+        ? value.avatarColor
+        : defaultProfile.avatarColor,
+    notificationsEnabled:
+      typeof value?.notificationsEnabled === 'boolean'
+        ? value.notificationsEnabled
+        : defaultProfile.notificationsEnabled,
+  };
+}
+
+function normalizeParty(value: Partial<PartyState> | null): PartyState {
+  const members = Array.isArray(value?.members)
+    ? value.members.filter((member): member is string => typeof member === 'string' && member.trim().length > 0)
+    : defaultParty.members;
+
+  return {
+    name: typeof value?.name === 'string' && value.name.trim() ? value.name : defaultParty.name,
+    city: typeof value?.city === 'string' && value.city.trim() ? value.city : defaultParty.city,
+    members: members.length > 0 ? members : defaultParty.members,
+    inviteCode:
+      typeof value?.inviteCode === 'string' && value.inviteCode.trim()
+        ? value.inviteCode
+        : defaultParty.inviteCode,
+  };
 }
 
 export default function App() {
   const [selectedSection, setSelectedSection] = useState<SectionKey>('pivo');
   const [menuOpen, setMenuOpen] = useState(false);
   const [storageReady, setStorageReady] = useState(false);
+  const [profile, setProfile] = useState<UserProfile>(defaultProfile);
+  const [party, setParty] = useState<PartyState>(defaultParty);
+  const [firebaseUser, setFirebaseUser] = useState<null | { uid: string; displayName: string; email: string | null; photoURL: string | null }>(null);
+  const googleClientIdReady = Platform.OS === 'android' ? !!googleAndroidClientId : !!googleWebClientId;
 
   useEffect(() => {
     let mounted = true;
 
-    loadJson<SectionKey>(storageKeys.selectedSection).then((savedSection) => {
+    Promise.all([
+      loadJson<SectionKey>(storageKeys.selectedSection),
+      loadJson<Partial<UserProfile>>(storageKeys.profile),
+      loadJson<Partial<PartyState>>(storageKeys.party),
+    ]).then(([savedSection, savedProfile, savedParty]) => {
       if (mounted && isSectionKey(savedSection)) {
         setSelectedSection(savedSection);
       }
 
       if (mounted) {
+        setProfile(normalizeProfile(savedProfile));
+        setParty(normalizeParty(savedParty));
         setStorageReady(true);
       }
     });
@@ -54,10 +126,66 @@ export default function App() {
   }, []);
 
   useEffect(() => {
+    if (!firebaseAuth) {
+      return;
+    }
+
+    return onAuthStateChanged(firebaseAuth, (user) => {
+      if (!user) {
+        setFirebaseUser(null);
+        return;
+      }
+
+      setFirebaseUser({
+        uid: user.uid,
+        displayName: user.displayName || user.email || 'Google uživatel',
+        email: user.email,
+        photoURL: user.photoURL,
+      });
+    });
+  }, []);
+
+  useEffect(() => {
     if (storageReady) {
       saveJson(storageKeys.selectedSection, selectedSection);
+      saveJson(storageKeys.profile, profile);
+      saveJson(storageKeys.party, party);
     }
-  }, [selectedSection, storageReady]);
+  }, [party, profile, selectedSection, storageReady]);
+
+  useEffect(() => {
+    if (storageReady && firebaseEnabled && firebaseUser) {
+      void savePartySync(party);
+    }
+  }, [firebaseUser, party, storageReady]);
+
+  useEffect(() => {
+    if (!storageReady) {
+      return;
+    }
+
+    if (!firebaseEnabled || !firebaseUser) {
+      return;
+    }
+
+    const unsubscribe = subscribePartySync(party.inviteCode, (remoteParty) => {
+      setParty((current) => {
+        if (
+          current.name === remoteParty.name &&
+          current.city === remoteParty.city &&
+          current.inviteCode === remoteParty.inviteCode &&
+          current.members.length === remoteParty.members.length &&
+          current.members.every((member, index) => member === remoteParty.members[index])
+        ) {
+          return current;
+        }
+
+        return remoteParty;
+      });
+    });
+
+    return unsubscribe;
+  }, [firebaseUser, party.inviteCode, storageReady]);
 
   const selectedActivity = useMemo<ActivityKey>(
     () =>
@@ -78,7 +206,7 @@ export default function App() {
             <OpkLogo />
             <Pressable style={styles.partyPill} onPress={() => setSelectedSection('party')}>
               <Text style={styles.partyLabel}>Parta</Text>
-              <Text style={styles.partyName}>Vyškov</Text>
+              <Text style={styles.partyName}>{party.name}</Text>
               <MaterialCommunityIcons name="chevron-down" size={18} color="#6B7280" />
             </Pressable>
           </View>
@@ -88,14 +216,64 @@ export default function App() {
         </View>
 
         <ScrollView contentContainerStyle={styles.screen} showsVerticalScrollIndicator={false}>
-          {selectedSection === 'pivo' && <PivoScreen accent={activeActivity.accent} />}
-          {selectedSection === 'obed' && <ObedScreen accent={activeActivity.accent} />}
-          {selectedSection === 'kolo' && <KoloScreen accent={activeActivity.accent} />}
-          {selectedSection === 'kronika' && <KronikaScreen onBack={() => setSelectedSection(selectedActivity)} />}
+          {selectedSection === 'pivo' && (
+            <PivoScreen
+              accent={activeActivity.accent}
+              partyCode={party.inviteCode}
+              canSync={firebaseEnabled && !!firebaseUser}
+            />
+          )}
+          {selectedSection === 'obed' && (
+            <ObedScreen
+              accent={activeActivity.accent}
+              partyCode={party.inviteCode}
+              canSync={firebaseEnabled && !!firebaseUser}
+              viewerId={firebaseUser?.uid ?? null}
+              viewerName={firebaseUser?.displayName ?? profile.name}
+            />
+          )}
+          {selectedSection === 'kolo' && (
+            <KoloScreen
+              accent={activeActivity.accent}
+              partyCode={party.inviteCode}
+              canSync={firebaseEnabled && !!firebaseUser}
+              viewerId={firebaseUser?.uid ?? null}
+              viewerName={firebaseUser?.displayName ?? profile.name}
+            />
+          )}
+          {selectedSection === 'kronika' && (
+            <KronikaScreen
+              onBack={() => setSelectedSection(selectedActivity)}
+              partyCode={party.inviteCode}
+              canSync={firebaseEnabled && !!firebaseUser}
+            />
+          )}
           {selectedSection === 'zpravy' && <ZpravyScreen onBack={() => setSelectedSection(selectedActivity)} />}
-          {selectedSection === 'profil' && <ProfilScreen onBack={() => setSelectedSection(selectedActivity)} />}
-          {selectedSection === 'party' && <PartyScreen onBack={() => setSelectedSection(selectedActivity)} />}
+          {selectedSection === 'profil' && (
+            <ProfilScreen
+              onBack={() => setSelectedSection(selectedActivity)}
+              party={party}
+              profile={profile}
+              firebaseUser={firebaseUser}
+              onSignOut={() => {
+                if (firebaseAuth) {
+                  void signOut(firebaseAuth);
+                }
+              }}
+              onChangeProfile={setProfile}
+            />
+          )}
+          {selectedSection === 'party' && (
+            <PartyScreen
+              onBack={() => setSelectedSection(selectedActivity)}
+              party={party}
+              canSync={firebaseEnabled && !!firebaseUser}
+              onChangeParty={setParty}
+            />
+          )}
         </ScrollView>
+
+        <GoogleAuthBanner enabled={firebaseEnabled && googleClientIdReady && !firebaseUser} />
 
         {menuOpen && (
           <AppMenu
@@ -134,9 +312,120 @@ export default function App() {
   );
 }
 
-function ObedScreen({ accent }: { accent: string }) {
+function GoogleAuthBanner({ enabled }: { enabled: boolean }) {
+  if (!enabled) {
+    return null;
+  }
+
+  if (Platform.OS === 'android') {
+    return <GoogleAuthBannerAndroid />;
+  }
+
+  return <GoogleAuthBannerWeb />;
+}
+
+function GoogleAuthBannerAndroid() {
+  const [googleRequest, googleResponse, promptGoogleSignIn] = Google.useIdTokenAuthRequest({
+    androidClientId: googleAndroidClientId as string,
+  });
+
+  useEffect(() => {
+    if (!firebaseAuth || !googleResponse || googleResponse.type !== 'success') {
+      return;
+    }
+
+    const idToken = googleResponse.params?.id_token;
+    if (!idToken) {
+      return;
+    }
+
+    signInWithCredential(firebaseAuth, GoogleAuthProvider.credential(idToken)).catch((error) => {
+      console.error('Google sign-in failed', error);
+    });
+  }, [googleResponse]);
+
+  if (!googleRequest) {
+    return null;
+  }
+
+  return (
+    <View style={styles.authBanner}>
+      <View style={styles.authBannerCopy}>
+        <Text style={styles.authBannerTitle}>Přihlášení</Text>
+        <Text style={styles.authBannerText}>Google účet propojí partu, Pivo a Kroniku mezi telefony.</Text>
+      </View>
+      <Pressable
+        disabled={!googleRequest}
+        style={[styles.authButton, !googleRequest && styles.authButtonDisabled]}
+        onPress={() => promptGoogleSignIn()}
+      >
+        <MaterialCommunityIcons name="google" size={18} color="#15251F" />
+        <Text style={styles.authButtonText}>Google</Text>
+      </Pressable>
+    </View>
+  );
+}
+
+function GoogleAuthBannerWeb() {
+  const [googleRequest, googleResponse, promptGoogleSignIn] = Google.useIdTokenAuthRequest({
+    webClientId: googleWebClientId as string,
+  });
+
+  useEffect(() => {
+    if (!firebaseAuth || !googleResponse || googleResponse.type !== 'success') {
+      return;
+    }
+
+    const idToken = googleResponse.params?.id_token;
+    if (!idToken) {
+      return;
+    }
+
+    signInWithCredential(firebaseAuth, GoogleAuthProvider.credential(idToken)).catch((error) => {
+      console.error('Google sign-in failed', error);
+    });
+  }, [googleResponse]);
+
+  if (!googleRequest) {
+    return null;
+  }
+
+  return (
+    <View style={styles.authBanner}>
+      <View style={styles.authBannerCopy}>
+        <Text style={styles.authBannerTitle}>Přihlášení</Text>
+        <Text style={styles.authBannerText}>Google účet propojí partu, Pivo a Kroniku mezi telefony.</Text>
+      </View>
+      <Pressable
+        disabled={!googleRequest}
+        style={[styles.authButton, !googleRequest && styles.authButtonDisabled]}
+        onPress={() => promptGoogleSignIn()}
+      >
+        <MaterialCommunityIcons name="google" size={18} color="#15251F" />
+        <Text style={styles.authButtonText}>Google</Text>
+      </Pressable>
+    </View>
+  );
+}
+
+function ObedScreen({
+  accent,
+  partyCode,
+  canSync,
+  viewerId,
+  viewerName,
+}: {
+  accent: string;
+  partyCode: string;
+  canSync: boolean;
+  viewerId: string | null;
+  viewerName: string;
+}) {
   const restaurantsWithMenu = lunchRestaurants.filter((restaurant) => restaurant.items.length > 0);
   const [expandedRestaurants, setExpandedRestaurants] = useState<string[]>([]);
+  const [selectedRestaurant, setSelectedRestaurant] = useState('');
+  const [remoteVotes, setRemoteVotes] = useState<ActivityVote[]>([]);
+  const [storageReady, setStorageReady] = useState(false);
 
   const toggleRestaurant = (restaurantName: string) => {
     setExpandedRestaurants((current) =>
@@ -146,13 +435,94 @@ function ObedScreen({ accent }: { accent: string }) {
     );
   };
 
+  useEffect(() => {
+    let mounted = true;
+
+    loadJson<string>(storageKeys.obedVote).then((savedChoice) => {
+      if (!mounted) {
+        return;
+      }
+
+      setSelectedRestaurant(typeof savedChoice === 'string' ? savedChoice : '');
+      setStorageReady(true);
+    });
+
+    return () => {
+      mounted = false;
+    };
+  }, []);
+
+  useEffect(() => {
+    if (storageReady) {
+      saveJson(storageKeys.obedVote, selectedRestaurant);
+    }
+  }, [selectedRestaurant, storageReady]);
+
+  useEffect(() => {
+    if (!canSync) {
+      return () => {};
+    }
+
+    const unsubscribe = subscribeActivityVotesSync(partyCode, 'obed', setRemoteVotes);
+    return unsubscribe;
+  }, [canSync, partyCode]);
+
+  useEffect(() => {
+    if (!storageReady || !canSync || !viewerId || !selectedRestaurant) {
+      return;
+    }
+
+    void saveActivityVoteSync(partyCode, 'obed', {
+      uid: viewerId,
+      displayName: viewerName,
+      choice: selectedRestaurant,
+      updatedAt: new Date().toISOString(),
+    });
+  }, [canSync, partyCode, selectedRestaurant, storageReady, viewerId, viewerName]);
+
+  const visibleVotes: ActivityVote[] = canSync
+    ? [
+        ...remoteVotes.filter((vote) => vote.uid !== viewerId),
+        ...(selectedRestaurant
+          ? [
+              {
+                uid: viewerId || 'local',
+                displayName: viewerName,
+                choice: selectedRestaurant,
+                updatedAt: new Date().toISOString(),
+              },
+            ]
+          : []),
+      ]
+    : selectedRestaurant
+      ? [
+          {
+            uid: 'local',
+            displayName: viewerName,
+            choice: selectedRestaurant,
+            updatedAt: new Date().toISOString(),
+          },
+        ]
+      : [];
+
+  const voteCounts = useMemo(() => {
+    const counts = new Map<string, number>();
+
+    visibleVotes.forEach((vote) => {
+      counts.set(vote.choice, (counts.get(vote.choice) ?? 0) + 1);
+    });
+
+    return counts;
+  }, [visibleVotes]);
+
   return (
     <>
       <View style={styles.statusPanelLight}>
         <Text style={styles.label}>Dnes</Text>
         <Text style={styles.darkStatusTitle}>Dnešní meníčka</Text>
         <Text style={styles.darkStatusText}>
-          {restaurantsWithMenu.length} podniků s obědovou nabídkou · zdroj Meníčka.cz
+          {restaurantsWithMenu.length} podniků s obědovou nabídkou ·{' '}
+          {selectedRestaurant ? `hlasuješ pro ${selectedRestaurant}` : 'vyber si, kam jít'}
         </Text>
       </View>
       <ActivityPanel title="Oběd" action="Dáme oběd?" accent={accent} icon="silverware-fork-knife">
@@ -205,7 +575,23 @@ function ObedScreen({ accent }: { accent: string }) {
                 )}
 
                 <View style={styles.restaurantActions}>
-                  <Text style={styles.voteText}>Hlasovat</Text>
+                  <Pressable
+                    onPress={() => setSelectedRestaurant(restaurant.name)}
+                    style={[
+                      styles.voteButton,
+                      selectedRestaurant === restaurant.name && styles.voteButtonActive,
+                    ]}
+                  >
+                    <Text
+                      style={[
+                        styles.voteButtonText,
+                        selectedRestaurant === restaurant.name && styles.voteButtonTextActive,
+                      ]}
+                    >
+                      {selectedRestaurant === restaurant.name ? 'Tvůj hlas' : 'Hlasovat'}
+                    </Text>
+                  </Pressable>
+                  <Text style={styles.voteCountText}>{voteCounts.get(restaurant.name) ?? 0} hlasů</Text>
                   <Text style={styles.voteText}>Otevřít na Meníčka.cz</Text>
                 </View>
               </View>
@@ -216,14 +602,6 @@ function ObedScreen({ accent }: { accent: string }) {
     </>
   );
 }
-
-type PivoState = {
-  place: string;
-  time: string;
-  note: string;
-  reply: 'Jdu' | 'Možná' | 'Dnes ne';
-  arrival: string;
-};
 
 const defaultPivoState: PivoState = {
   place: 'Radegastovna Pirát',
@@ -247,7 +625,15 @@ function normalizePivoState(value: Partial<PivoState> | null): PivoState {
   };
 }
 
-function PivoScreen({ accent }: { accent: string }) {
+function PivoScreen({
+  accent,
+  partyCode,
+  canSync,
+}: {
+  accent: string;
+  partyCode: string;
+  canSync: boolean;
+}) {
   const [place, setPlace] = useState(defaultPivoState.place);
   const [time, setTime] = useState(defaultPivoState.time);
   const [note, setNote] = useState(defaultPivoState.note);
@@ -285,6 +671,28 @@ function PivoScreen({ accent }: { accent: string }) {
     }
   }, [arrival, note, place, reply, storageReady, time]);
 
+  useEffect(() => {
+    if (!canSync) {
+      return () => {};
+    }
+
+    const unsubscribe = subscribePivoSync(partyCode, (remoteState) => {
+      setPlace(remoteState.place);
+      setTime(remoteState.time);
+      setNote(remoteState.note);
+      setReply(remoteState.reply);
+      setArrival(remoteState.arrival);
+    });
+
+    return unsubscribe;
+  }, [canSync, partyCode]);
+
+  useEffect(() => {
+    if (storageReady && canSync) {
+      void savePivoSync(partyCode, { place, time, note, reply, arrival });
+    }
+  }, [arrival, canSync, note, partyCode, place, reply, storageReady, time]);
+
   return (
     <>
       <View style={styles.statusPanelLight}>
@@ -314,7 +722,9 @@ function PivoScreen({ accent }: { accent: string }) {
               </Pressable>
               <Text style={styles.voteText}>Sdílet</Text>
             </View>
-            <Text style={styles.localSaveText}>Uloženo jen v tomhle telefonu</Text>
+            <Text style={styles.localSaveText}>
+              {canSync ? 'Sdíleno přes Firebase' : 'Uloženo jen v tomhle telefonu'}
+            </Text>
           </View>
 
           {editingPlan && (
@@ -998,11 +1408,85 @@ const styles = StyleSheet.create({
     fontWeight: '900',
     marginTop: 10,
   },
+  voteButton: {
+    alignItems: 'center',
+    backgroundColor: '#FFFFFF',
+    borderColor: '#D1D5DB',
+    borderRadius: 8,
+    borderWidth: 1,
+    justifyContent: 'center',
+    minHeight: 40,
+    paddingHorizontal: 12,
+  },
+  voteButtonActive: {
+    backgroundColor: '#0F766E',
+    borderColor: '#0F766E',
+  },
+  voteButtonText: {
+    color: '#374151',
+    fontSize: 13,
+    fontWeight: '900',
+  },
+  voteButtonTextActive: {
+    color: '#FFFFFF',
+  },
+  voteCountText: {
+    color: '#6B7280',
+    fontSize: 13,
+    fontWeight: '800',
+    marginTop: 10,
+  },
   localSaveText: {
     color: '#6B7280',
     fontSize: 12,
     fontWeight: '700',
     marginTop: 10,
+  },
+  authBanner: {
+    alignItems: 'center',
+    backgroundColor: '#FFFFFF',
+    borderColor: '#E1DBD2',
+    borderRadius: 8,
+    borderWidth: 1,
+    flexDirection: 'row',
+    gap: 12,
+    marginHorizontal: 18,
+    marginTop: 12,
+    padding: 14,
+  },
+  authBannerCopy: {
+    flex: 1,
+  },
+  authBannerTitle: {
+    color: '#111827',
+    fontSize: 16,
+    fontWeight: '900',
+  },
+  authBannerText: {
+    color: '#4B5563',
+    fontSize: 13,
+    fontWeight: '700',
+    lineHeight: 18,
+    marginTop: 4,
+  },
+  authButton: {
+    alignItems: 'center',
+    backgroundColor: '#F8B84E',
+    borderColor: '#F6D186',
+    borderRadius: 8,
+    borderWidth: 1,
+    flexDirection: 'row',
+    gap: 6,
+    minHeight: 40,
+    paddingHorizontal: 12,
+  },
+  authButtonDisabled: {
+    opacity: 0.5,
+  },
+  authButtonText: {
+    color: '#15251F',
+    fontSize: 14,
+    fontWeight: '900',
   },
   rowCard: {
     alignItems: 'center',

@@ -1,7 +1,45 @@
-import { StyleSheet, Text, View } from 'react-native';
+import { useState } from 'react';
+import { Pressable, StyleSheet, Text, TextInput, View } from 'react-native';
 import { BackToOpk } from '../components/BackToOpk';
+import { PartyState } from '../types';
 
-export function PartyScreen({ onBack }: { onBack: () => void }) {
+type PartyScreenProps = {
+  onBack: () => void;
+  party: PartyState;
+  canSync: boolean;
+  onChangeParty: (party: PartyState) => void;
+};
+
+export function PartyScreen({ onBack, party, canSync, onChangeParty }: PartyScreenProps) {
+  const [newMember, setNewMember] = useState('');
+
+  const updateParty = (nextParty: Partial<PartyState>) => {
+    onChangeParty({ ...party, ...nextParty });
+  };
+
+  const updateName = (name: string) => {
+    updateParty({ name });
+  };
+
+  const addMember = () => {
+    const member = newMember.trim();
+
+    if (!member || party.members.includes(member)) {
+      return;
+    }
+
+    updateParty({ members: [...party.members, member] });
+    setNewMember('');
+  };
+
+  const removeMember = (member: string) => {
+    if (party.members.length <= 1) {
+      return;
+    }
+
+    updateParty({ members: party.members.filter((item) => item !== member) });
+  };
+
   return (
     <>
       <View style={styles.sectionHeader}>
@@ -11,37 +49,72 @@ export function PartyScreen({ onBack }: { onBack: () => void }) {
 
       <View style={styles.activePartyCard}>
         <Text style={styles.label}>Vybraná parta</Text>
-        <Text style={styles.activePartyTitle}>Parta Vyškov</Text>
-        <Text style={styles.darkStatusText}>3 členové · Vyškov · OPK režim</Text>
-        <View style={styles.partyModeRow}>
-          <Text style={styles.partyModeActive}>Oběd</Text>
-          <Text style={styles.partyModeActive}>Pivo</Text>
-          <Text style={styles.partyModeActive}>Kolo</Text>
-        </View>
+        <Text style={styles.activePartyTitle}>{party.name || 'Bez názvu'}</Text>
+        <Text style={styles.darkStatusText}>
+          {party.members.length} členové · {party.city || 'bez města'}
+        </Text>
         <View style={styles.partyMembers}>
-          {['Marek', 'Tomáš', 'Pavel'].map((member) => (
-            <Text key={member} style={styles.memberChip}>
-              {member}
-            </Text>
+          {party.members.map((member) => (
+            <Pressable key={member} style={styles.memberChip} onPress={() => removeMember(member)}>
+              <Text style={styles.memberChipText}>{member}</Text>
+              <Text style={styles.memberChipRemove}>×</Text>
+            </Pressable>
           ))}
+        </View>
+      </View>
+
+      <View style={styles.formCard}>
+        <Text style={styles.formTitle}>Upravit partu</Text>
+        <View style={styles.formField}>
+          <Text style={styles.inputLabel}>Název party</Text>
+          <TextInput
+            value={party.name}
+            onChangeText={updateName}
+            placeholder="Parta Vyškov"
+            placeholderTextColor="#9CA3AF"
+            style={styles.textInput}
+          />
+        </View>
+        <View style={styles.formField}>
+          <Text style={styles.inputLabel}>Město</Text>
+          <TextInput
+            value={party.city}
+            onChangeText={(city) => updateParty({ city })}
+            placeholder="Vyškov"
+            placeholderTextColor="#9CA3AF"
+            style={styles.textInput}
+          />
+        </View>
+        <View style={styles.formField}>
+          <Text style={styles.inputLabel}>Přidat člena</Text>
+          <View style={styles.memberInputRow}>
+            <TextInput
+              value={newMember}
+              onChangeText={setNewMember}
+              placeholder="Jméno kamaráda"
+              placeholderTextColor="#9CA3AF"
+              style={[styles.textInput, styles.memberInput]}
+            />
+            <Pressable style={styles.addMemberButton} onPress={addMember}>
+              <Text style={styles.addMemberButtonText}>Přidat</Text>
+            </Pressable>
+          </View>
         </View>
       </View>
 
       <View style={styles.inviteCard}>
         <View>
           <Text style={styles.label}>Pozvánka</Text>
-          <Text style={styles.inviteCode}>OPK-VYSKOV</Text>
+          <Text style={styles.inviteCode}>{party.inviteCode}</Text>
+          <Text style={styles.syncStatus}>
+            {canSync ? 'Sdíleno přes Firebase' : 'Lokálně bez backendu'}
+          </Text>
         </View>
         <Text style={styles.darkCardAction}>Sdílet kód</Text>
       </View>
 
       <View style={styles.cardList}>
-        {[
-          'Vytvořit novou partu',
-          'Pozvat kamaráda',
-          'Správci a role',
-          'Nastavení party',
-        ].map((item) => (
+        {['Pozvat kamaráda', 'Správci a role', 'Nastavení party'].map((item) => (
           <View key={item} style={styles.rowCard}>
             <Text style={styles.cardText}>{item}</Text>
             <Text style={styles.cardMeta}>otevřít</Text>
@@ -90,37 +163,87 @@ const styles = StyleSheet.create({
     lineHeight: 21,
     marginTop: 6,
   },
-  partyModeRow: {
-    flexDirection: 'row',
-    flexWrap: 'wrap',
-    gap: 6,
-    marginTop: 14,
-  },
-  partyModeActive: {
-    backgroundColor: '#15251F',
-    borderRadius: 6,
-    color: '#FFFFFF',
-    fontSize: 12,
-    fontWeight: '900',
-    overflow: 'hidden',
-    paddingHorizontal: 9,
-    paddingVertical: 5,
-  },
   partyMembers: {
     flexDirection: 'row',
     flexWrap: 'wrap',
     gap: 8,
-    marginTop: 14,
+    marginTop: 16,
   },
   memberChip: {
+    alignItems: 'center',
     backgroundColor: '#F4F1EA',
     borderRadius: 8,
-    color: '#15251F',
-    fontSize: 13,
-    fontWeight: '900',
+    flexDirection: 'row',
+    gap: 6,
     overflow: 'hidden',
     paddingHorizontal: 10,
     paddingVertical: 7,
+  },
+  memberChipText: {
+    color: '#15251F',
+    fontSize: 13,
+    fontWeight: '900',
+  },
+  memberChipRemove: {
+    color: '#6B7280',
+    fontSize: 14,
+    fontWeight: '900',
+  },
+  formCard: {
+    backgroundColor: '#FFFFFF',
+    borderColor: '#E1DBD2',
+    borderRadius: 8,
+    borderWidth: 1,
+    gap: 12,
+    padding: 14,
+  },
+  formTitle: {
+    color: '#111827',
+    fontSize: 18,
+    fontWeight: '900',
+  },
+  formField: {
+    gap: 6,
+  },
+  inputLabel: {
+    color: '#374151',
+    fontSize: 13,
+    fontWeight: '900',
+  },
+  textInput: {
+    backgroundColor: '#FBFAF8',
+    borderColor: '#E1DBD2',
+    borderRadius: 8,
+    borderWidth: 1,
+    color: '#111827',
+    fontSize: 16,
+    fontWeight: '800',
+    minHeight: 46,
+    paddingHorizontal: 12,
+    paddingVertical: 10,
+  },
+  memberInputRow: {
+    alignItems: 'center',
+    flexDirection: 'row',
+    gap: 8,
+  },
+  memberInput: {
+    flex: 1,
+  },
+  addMemberButton: {
+    alignItems: 'center',
+    backgroundColor: '#F8B84E',
+    borderColor: '#F6D186',
+    borderRadius: 8,
+    borderWidth: 1,
+    justifyContent: 'center',
+    minHeight: 46,
+    paddingHorizontal: 12,
+  },
+  addMemberButtonText: {
+    color: '#15251F',
+    fontSize: 14,
+    fontWeight: '900',
   },
   inviteCard: {
     alignItems: 'center',
@@ -140,6 +263,12 @@ const styles = StyleSheet.create({
     color: '#F8B84E',
     fontSize: 13,
     fontWeight: '900',
+  },
+  syncStatus: {
+    color: '#D1D5DB',
+    fontSize: 12,
+    fontWeight: '700',
+    marginTop: 4,
   },
   cardList: {
     gap: 10,

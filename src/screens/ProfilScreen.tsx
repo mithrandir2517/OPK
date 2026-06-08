@@ -1,7 +1,42 @@
-import { StyleSheet, Text, View } from 'react-native';
+import { Pressable, StyleSheet, Text, TextInput, View } from 'react-native';
 import { BackToOpk } from '../components/BackToOpk';
+import { PartyState, UserProfile } from '../types';
 
-export function ProfilScreen({ onBack }: { onBack: () => void }) {
+type ProfilScreenProps = {
+  onBack: () => void;
+  party: PartyState;
+  profile: UserProfile;
+  firebaseUser: null | { uid: string; displayName: string; email: string | null; photoURL: string | null };
+  onSignOut: () => void;
+  onChangeProfile: (profile: UserProfile) => void;
+};
+
+const avatarColors = ['#F8B84E', '#0F766E', '#2563EB', '#B45309'];
+
+export function ProfilScreen({
+  onBack,
+  party,
+  profile,
+  firebaseUser,
+  onSignOut,
+  onChangeProfile,
+}: ProfilScreenProps) {
+  const updateProfile = (nextProfile: Partial<UserProfile>) => {
+    const updated = { ...profile, ...nextProfile };
+    onChangeProfile({
+      ...updated,
+      avatarInitial: updated.avatarInitial.trim().slice(0, 1).toUpperCase() || 'M',
+      name: updated.name,
+    });
+  };
+
+  const updateName = (name: string) => {
+    updateProfile({
+      name,
+      avatarInitial: name.trim().slice(0, 1).toUpperCase() || profile.avatarInitial,
+    });
+  };
+
   return (
     <>
       <View style={styles.sectionHeader}>
@@ -9,9 +44,11 @@ export function ProfilScreen({ onBack }: { onBack: () => void }) {
         <BackToOpk onPress={onBack} />
       </View>
       <View style={styles.profilePanel}>
-        <Text style={styles.profileAvatar}>M</Text>
-        <Text style={styles.profileName}>Marek</Text>
-        <Text style={styles.profileMeta}>Parta Vyškov · aktivní člen · 42 akcí</Text>
+        <Text style={[styles.profileAvatar, { backgroundColor: profile.avatarColor }]}>
+          {profile.avatarInitial}
+        </Text>
+        <Text style={styles.profileName}>{profile.name || 'Bez jména'}</Text>
+        <Text style={styles.profileMeta}>{party.name} · aktivní člen · 42 akcí</Text>
         <View style={styles.profileStats}>
           <View style={styles.profileStat}>
             <Text style={styles.profileStatValue}>42</Text>
@@ -26,9 +63,67 @@ export function ProfilScreen({ onBack }: { onBack: () => void }) {
             <Text style={styles.profileStatLabel}>km</Text>
           </View>
         </View>
+        <Text style={styles.profileSync}>
+          {firebaseUser ? `Přihlášený Google účet: ${firebaseUser.displayName}` : 'Bez Google přihlášení'}
+        </Text>
       </View>
+
+      <View style={styles.formCard}>
+        <Text style={styles.formTitle}>Upravit profil</Text>
+        <View style={styles.formField}>
+          <Text style={styles.inputLabel}>Jméno</Text>
+          <TextInput
+            value={profile.name}
+            onChangeText={updateName}
+            placeholder="Tvoje jméno"
+            placeholderTextColor="#9CA3AF"
+            style={styles.textInput}
+          />
+        </View>
+        <View style={styles.formField}>
+          <Text style={styles.inputLabel}>Iniciála</Text>
+          <TextInput
+            value={profile.avatarInitial}
+            onChangeText={(avatarInitial) => updateProfile({ avatarInitial })}
+            maxLength={1}
+            placeholder="M"
+            placeholderTextColor="#9CA3AF"
+            style={styles.textInput}
+          />
+        </View>
+        <View style={styles.formField}>
+          <Text style={styles.inputLabel}>Barva avatara</Text>
+          <View style={styles.swatchRow}>
+            {avatarColors.map((color) => (
+              <Pressable
+                key={color}
+                onPress={() => updateProfile({ avatarColor: color })}
+                style={[
+                  styles.colorSwatch,
+                  { backgroundColor: color },
+                  profile.avatarColor === color && styles.colorSwatchActive,
+                ]}
+              />
+            ))}
+          </View>
+        </View>
+      </View>
+
       <View style={styles.cardList}>
-        {['Pozvat kamaráda', 'Upozornění', 'Nastavení party', 'Odhlásit se'].map((item) => (
+        {firebaseUser ? (
+          <Pressable style={styles.rowCard} onPress={onSignOut}>
+            <Text style={styles.cardText}>Odhlásit Google účet</Text>
+            <Text style={styles.cardMeta}>otevřít</Text>
+          </Pressable>
+        ) : null}
+        <Pressable
+          style={styles.rowCard}
+          onPress={() => updateProfile({ notificationsEnabled: !profile.notificationsEnabled })}
+        >
+          <Text style={styles.cardText}>Upozornění</Text>
+          <Text style={styles.cardMeta}>{profile.notificationsEnabled ? 'zapnuto' : 'vypnuto'}</Text>
+        </Pressable>
+        {['Pozvat kamaráda', 'Nastavení party', 'Odhlásit se'].map((item) => (
           <View key={item} style={styles.rowCard}>
             <Text style={styles.cardText}>{item}</Text>
             <Text style={styles.cardMeta}>otevřít</Text>
@@ -59,7 +154,6 @@ const styles = StyleSheet.create({
     padding: 20,
   },
   profileAvatar: {
-    backgroundColor: '#F8B84E',
     borderRadius: 26,
     color: '#111827',
     fontSize: 22,
@@ -103,6 +197,60 @@ const styles = StyleSheet.create({
     color: '#D1D5DB',
     fontSize: 12,
     fontWeight: '800',
+  },
+  profileSync: {
+    color: '#D1D5DB',
+    fontSize: 12,
+    fontWeight: '700',
+    marginTop: 4,
+    textAlign: 'center',
+  },
+  formCard: {
+    backgroundColor: '#FFFFFF',
+    borderColor: '#E1DBD2',
+    borderRadius: 8,
+    borderWidth: 1,
+    gap: 12,
+    padding: 14,
+  },
+  formTitle: {
+    color: '#111827',
+    fontSize: 18,
+    fontWeight: '900',
+  },
+  formField: {
+    gap: 6,
+  },
+  inputLabel: {
+    color: '#374151',
+    fontSize: 13,
+    fontWeight: '900',
+  },
+  textInput: {
+    backgroundColor: '#FBFAF8',
+    borderColor: '#E1DBD2',
+    borderRadius: 8,
+    borderWidth: 1,
+    color: '#111827',
+    fontSize: 16,
+    fontWeight: '800',
+    minHeight: 46,
+    paddingHorizontal: 12,
+    paddingVertical: 10,
+  },
+  swatchRow: {
+    flexDirection: 'row',
+    gap: 8,
+  },
+  colorSwatch: {
+    borderColor: '#FFFFFF',
+    borderRadius: 8,
+    borderWidth: 2,
+    height: 34,
+    width: 34,
+  },
+  colorSwatchActive: {
+    borderColor: '#111827',
   },
   cardList: {
     gap: 10,

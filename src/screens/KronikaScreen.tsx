@@ -1,6 +1,7 @@
 import { MaterialCommunityIcons } from '@expo/vector-icons';
 import { useEffect, useMemo, useState } from 'react';
 import { Pressable, StyleSheet, Text, TextInput, View } from 'react-native';
+import { addMemorySync, subscribeMemorySync } from '../backend/opkSync';
 import { BackToOpk } from '../components/BackToOpk';
 import { memories } from '../data/mockData';
 import { loadJson, saveJson, storageKeys } from '../storage/localStorage';
@@ -37,7 +38,13 @@ function createMemoryId() {
   return `${Date.now()}-${Math.round(Math.random() * 100000)}`;
 }
 
-export function KronikaScreen({ onBack }: { onBack: () => void }) {
+type KronikaScreenProps = {
+  onBack: () => void;
+  partyCode: string;
+  canSync: boolean;
+};
+
+export function KronikaScreen({ onBack, partyCode, canSync }: KronikaScreenProps) {
   const [savedMemories, setSavedMemories] = useState<SavedMemory[]>([]);
   const [selectedActivity, setSelectedActivity] = useState<ActivityKey>('pivo');
   const [memoryText, setMemoryText] = useState('');
@@ -62,6 +69,18 @@ export function KronikaScreen({ onBack }: { onBack: () => void }) {
   }, []);
 
   useEffect(() => {
+    if (!canSync) {
+      return () => {};
+    }
+
+    const unsubscribe = subscribeMemorySync(partyCode, (remoteMemories) => {
+      setSavedMemories((current) => (remoteMemories.length > 0 ? remoteMemories : current));
+    });
+
+    return unsubscribe;
+  }, [canSync, partyCode]);
+
+  useEffect(() => {
     if (storageReady) {
       saveJson(storageKeys.memories, savedMemories);
     }
@@ -84,15 +103,17 @@ export function KronikaScreen({ onBack }: { onBack: () => void }) {
       return;
     }
 
-    setSavedMemories((current) => [
-      {
-        id: createMemoryId(),
-        activity: selectedActivity,
-        text,
-        createdAt: new Date().toISOString(),
-      },
-      ...current,
-    ]);
+    const memory: SavedMemory = {
+      id: createMemoryId(),
+      activity: selectedActivity,
+      text,
+      createdAt: new Date().toISOString(),
+    };
+
+    setSavedMemories((current) => [memory, ...current]);
+    if (canSync) {
+      void addMemorySync(partyCode, memory);
+    }
     setMemoryText('');
     setFormOpen(false);
   };
@@ -109,6 +130,9 @@ export function KronikaScreen({ onBack }: { onBack: () => void }) {
           <View>
             <Text style={styles.label}>Vzpomínky party</Text>
             <Text style={styles.addPanelTitle}>Co se stalo?</Text>
+            <Text style={styles.syncStatus}>
+              {canSync ? 'Sdíleno přes Firebase' : 'Jen uložené v telefonu'}
+            </Text>
           </View>
           <Pressable style={styles.addButton} onPress={() => setFormOpen((open) => !open)}>
             <MaterialCommunityIcons name={formOpen ? 'close' : 'plus'} size={18} color="#15251F" />
@@ -224,6 +248,12 @@ const styles = StyleSheet.create({
     color: '#111827',
     fontSize: 20,
     fontWeight: '900',
+    marginTop: 4,
+  },
+  syncStatus: {
+    color: '#6B7280',
+    fontSize: 12,
+    fontWeight: '700',
     marginTop: 4,
   },
   addButton: {
