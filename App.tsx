@@ -1,6 +1,6 @@
 import { StatusBar } from 'expo-status-bar';
 import { MaterialCommunityIcons } from '@expo/vector-icons';
-import { useMemo, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import {
   Platform,
   Pressable,
@@ -12,163 +12,52 @@ import {
   View,
   StatusBar as NativeStatusBar,
 } from 'react-native';
+import { ActivityPanel } from './src/components/ActivityPanel';
+import { AppMenu } from './src/components/AppMenu';
+import { OpkLogo } from './src/components/OpkLogo';
+import { activityMeta, beerReplies, lunchRestaurants, navItems } from './src/data/mockData';
+import { KoloScreen } from './src/screens/KoloScreen';
+import { KronikaScreen } from './src/screens/KronikaScreen';
+import { PartyScreen } from './src/screens/PartyScreen';
+import { ProfilScreen } from './src/screens/ProfilScreen';
+import { ZpravyScreen } from './src/screens/ZpravyScreen';
+import { loadJson, saveJson, storageKeys } from './src/storage/localStorage';
+import { ActivityKey, SectionKey } from './src/types';
 
-type ActivityKey = 'obed' | 'pivo' | 'kolo';
-type SectionKey = ActivityKey | 'kronika' | 'zpravy' | 'profil' | 'party';
-type IconName = keyof typeof MaterialCommunityIcons.glyphMap;
-type LunchRestaurant = {
-  name: string;
-  delivery: boolean;
-  message?: string;
-  items: Array<{
-    no?: string;
-    name: string;
-    price?: string;
-  }>;
-};
+const sectionKeys: SectionKey[] = ['obed', 'pivo', 'kolo', 'kronika', 'zpravy', 'profil', 'party'];
 
-const activityMeta: Record<ActivityKey, { title: string; accent: string; action: string; icon: IconName }> = {
-  obed: { title: 'Oběd', accent: '#0F766E', action: 'Dáme oběd?', icon: 'silverware-fork-knife' },
-  pivo: { title: 'Pivo', accent: '#B45309', action: 'Dáme pivo?', icon: 'glass-mug-variant' },
-  kolo: { title: 'Kolo', accent: '#2563EB', action: 'Dáme kolo?', icon: 'bike' },
-};
-
-const navItems: Array<{ key: ActivityKey; label: string; icon: IconName }> = [
-  { key: 'obed', label: 'Oběd', icon: 'silverware-fork-knife' },
-  { key: 'pivo', label: 'Pivo', icon: 'glass-mug-variant' },
-  { key: 'kolo', label: 'Kolo', icon: 'bike' },
-];
-
-const lunchRestaurants: LunchRestaurant[] = [
-  {
-    name: 'Radegastovna Pirát',
-    delivery: true,
-    items: [
-      { name: '0,33l Moravská cibulačka s trhaným uzeným masem, bramborem a chlebovými krutony', price: '85 Kč' },
-      { no: '1.', name: '350g Tortilla Caesar s grilovaným kuřecím masem, pancettou, římským salátem, sýrem Grand Biraghi, rajčaty a Caesar dressingem, hranolky, dip dle výběru', price: '295 Kč' },
-      { no: '2.', name: '200g Grilovaná vepřová panenka plněná anglickou slaninou, smetanová omáčka se sýrem Pecorino, smažené krokety, čerstvý baby špenát', price: '295 Kč' },
-      { no: '3.', name: '250g Telecí rumpsteak', price: '339 Kč' },
-    ],
-  },
-  {
-    name: 'Adélka',
-    delivery: false,
-    items: [
-      { name: 'Dršťková polévka s petrželkou', price: '65 Kč' },
-      { name: 'Kuřecí vývar, maso, zelenina, nudle', price: '65 Kč' },
-      { no: '1.', name: 'Kančí výpečky na černém pivu a česneku, dušená kapusta, restované bramborové šišky s petrželkou', price: '219 Kč' },
-      { no: '2.', name: 'Steak z tuňáka v sezamové marinádě, zeleninový salát s citrusovými segmenty, mikrobylinky', price: '295 Kč' },
-      { no: '3.', name: 'Bún Chả, grilovaný marinovaný asijský vepřový bůček, restované rýžové nudle s julienne zeleninou, koriandr, sezam, smažená cibulka', price: '259 Kč' },
-      { no: '4.', name: 'Wagyu rump steak, pepřová nebo houbová omáčka, pečené brambory s bylinkami, listový salát', price: '499 Kč' },
-      { no: '5.', name: 'Citronový koláč s jahodami', price: '75 Kč' },
-    ],
-  },
-  {
-    name: 'U Maxíka',
-    delivery: true,
-    items: [{ name: 'Dle denní nabídky' }],
-  },
-  { name: 'Restaurace Sport Drnovice', delivery: false, items: [{ no: '1.', name: 'Víkendové menu' }] },
-  { name: 'Hotel Allvet', delivery: false, message: 'Pro tento den nebylo zadáno polední menu.', items: [] },
-  { name: 'Chalupa U Městské brány', delivery: true, message: 'Pro tento den nebylo zadáno polední menu.', items: [] },
-  { name: 'Pohoda Luleč', delivery: true, message: 'Pro tento den nebylo zadáno polední menu.', items: [] },
-  { name: 'Cafe Moya', delivery: true, message: 'Pro tento den nebylo zadáno polední menu.', items: [] },
-  { name: 'Finestra Restaurant', delivery: true, message: 'Pro tento den nebylo zadáno polední menu.', items: [] },
-  { name: 'Resto Rugby', delivery: true, message: 'Pro tento den nebylo zadáno polední menu.', items: [] },
-  { name: 'Hospůdka U Nádraží', delivery: false, message: 'Restaurace má tento den zavřeno.', items: [] },
-  { name: 'Kojál', delivery: false, message: 'Restaurace má tento den zavřeno.', items: [] },
-  { name: 'Bowling Pub', delivery: true, message: 'Restaurace má tento den zavřeno.', items: [] },
-  { name: 'Gastrocentrum', delivery: true, message: 'Restaurace má tento den zavřeno.', items: [] },
-  { name: 'Cafe & You', delivery: false, message: 'Restaurace má tento den zavřeno.', items: [] },
-  { name: 'Restaurace Sokolovna', delivery: false, message: 'Restaurace má tento den zavřeno.', items: [] },
-  { name: 'Restaurace Kuchyňa', delivery: true, message: 'Restaurace má tento den zavřeno.', items: [] },
-  { name: 'Campos Catering', delivery: false, message: 'Restaurace má tento den zavřeno.', items: [] },
-  {
-    name: 'Restaurace na Městečku',
-    delivery: true,
-    items: [
-      { name: 'Hovězí vývar s nudlemi', price: '' },
-      { no: '1.', name: '150g Pečené králičí stehno na smetaně, domácí houskový knedlík', price: '209 Kč' },
-      { no: '2.', name: '150g Vepřový stroganoff, hranolky', price: '189 Kč' },
-    ],
-  },
-  {
-    name: 'Restaurace Letiště u Kopinců',
-    delivery: false,
-    items: [
-      { name: 'Hovězí vývar' },
-      { no: '1.', name: 'Moravský vrabec, zelí, knedlík', price: '189 Kč' },
-      { no: '2.', name: 'Kuřecí kung-pao, jasmínová rýže', price: '189 Kč' },
-      { no: '3.', name: 'Smažený kuřecí řízek, bramborový salát', price: '219 Kč' },
-      { no: '4.', name: 'Katův šleh, domácí bramboráčky', price: '219 Kč' },
-      { no: '5.', name: 'Panenka s houbovou omáčkou, bramborové dolárky', price: '239 Kč' },
-      { no: '6.', name: 'Panenka na grilu, bramborové dolárky, tatarka', price: '239 Kč' },
-      { no: '7.', name: 'Smažený sýr, hranolky, tatarka', price: '199 Kč' },
-      { no: '8.', name: 'Dětský smažený sýr, hranolky, kečup', price: '139 Kč' },
-      { no: '9.', name: 'Dětský smažený kuřecí řízeček, hranolky, kečup', price: '139 Kč' },
-    ],
-  },
-  {
-    name: 'Hotel Dukla',
-    delivery: false,
-    items: [
-      { name: 'Domácí vývar s masem a nudlemi' },
-      { no: '1.', name: '150g Pljeskavica, hranolky, ajvar', price: '184 Kč' },
-      { no: '2.', name: '200g Marinovaná krkovička na grilu, šťouchané brambory, zelný salát s koprem', price: '210 Kč' },
-      { no: '3.', name: '200g Smažený vepřový řízek, vařené brambory, sterilovaný okurek', price: '185 Kč' },
-    ],
-  },
-  { name: 'zeměznás', delivery: false, message: 'Pro tento den nebylo zadáno polední menu.', items: [] },
-  { name: 'Hotel Selský dvůr', delivery: true, message: 'Pro tento den nebylo zadáno polední menu.', items: [] },
-  { name: 'BERNARD BAR Sedmička', delivery: true, message: 'Pro tento den nebylo zadáno polední menu.', items: [] },
-  { name: 'Statek Olšany', delivery: false, message: 'Pro tento den nebylo zadáno polední menu.', items: [] },
-  { name: 'Arena', delivery: true, message: 'Pro tento den nebylo zadáno polední menu.', items: [] },
-  { name: 'Vosíme Vyškov', delivery: true, message: 'Pro tento den nebylo zadáno polední menu.', items: [] },
-  { name: 'FRULI cafeteria', delivery: true, message: 'Pro tento den nebylo zadáno polední menu.', items: [] },
-];
-
-const memories = [
-  {
-    title: 'Páteční legenda',
-    meta: 'Pivo · včera · 3 fotky',
-    text: 'Tomáš konečně dorazil včas a nikdo mu to nevěřil.',
-  },
-  {
-    title: 'Oběd u Radnice',
-    meta: 'Oběd · dnes · hlasování skončilo',
-    text: 'Vyhrála svíčková. Pavel tvrdí, že to bylo demokratické.',
-  },
-  {
-    title: 'Krátké kolo po práci',
-    meta: 'Kolo · sobota · 27 km',
-    text: 'Vítr proti nám, nálada pořád dobrá.',
-  },
-];
-
-const news = [
-  {
-    title: 'Vyškovsko dnes',
-    summary:
-      'AI shrne místní článek z Vyškovského deníku do jedné věty a nabídne rychlou akci pro partu.',
-    tag: 'Zprávy',
-  },
-  {
-    title: 'Kam vyrazit o víkendu',
-    summary:
-      'Události v okolí půjdou uložit jako plán: výlet, pivo po akci nebo položka do kroniky.',
-    tag: 'Akce',
-  },
-];
-
-const beerReplies = [
-  { name: 'Marek', status: 'Jde', arrival: '19:00' },
-  { name: 'Tomáš', status: 'Jde', arrival: 'za 30 min' },
-  { name: 'Pavel', status: 'Možná', arrival: '' },
-];
+function isSectionKey(value: unknown): value is SectionKey {
+  return typeof value === 'string' && sectionKeys.includes(value as SectionKey);
+}
 
 export default function App() {
   const [selectedSection, setSelectedSection] = useState<SectionKey>('pivo');
   const [menuOpen, setMenuOpen] = useState(false);
+  const [storageReady, setStorageReady] = useState(false);
+
+  useEffect(() => {
+    let mounted = true;
+
+    loadJson<SectionKey>(storageKeys.selectedSection).then((savedSection) => {
+      if (mounted && isSectionKey(savedSection)) {
+        setSelectedSection(savedSection);
+      }
+
+      if (mounted) {
+        setStorageReady(true);
+      }
+    });
+
+    return () => {
+      mounted = false;
+    };
+  }, []);
+
+  useEffect(() => {
+    if (storageReady) {
+      saveJson(storageKeys.selectedSection, selectedSection);
+    }
+  }, [selectedSection, storageReady]);
 
   const selectedActivity = useMemo<ActivityKey>(
     () =>
@@ -245,113 +134,6 @@ export default function App() {
   );
 }
 
-function OpkLogo() {
-  return (
-    <View style={styles.logoMark}>
-      <View style={styles.logoIconRow}>
-        <View style={[styles.logoIconCell, styles.logoObedCell]}>
-          <MaterialCommunityIcons name="silverware-fork-knife" size={13} color="#F8FAFC" />
-        </View>
-        <View style={[styles.logoIconCell, styles.logoPivoCell]}>
-          <MaterialCommunityIcons name="glass-mug-variant" size={15} color="#1F2937" />
-        </View>
-        <View style={[styles.logoIconCell, styles.logoKoloCell]}>
-          <MaterialCommunityIcons name="bike" size={14} color="#F8FAFC" />
-        </View>
-      </View>
-      <Text style={styles.logoText}>OPK</Text>
-    </View>
-  );
-}
-
-function ActivityPanel({
-  title,
-  action,
-  accent,
-  icon,
-  children,
-}: {
-  title: string;
-  action: string;
-  accent: string;
-  icon: IconName;
-  children: React.ReactNode;
-}) {
-  return (
-    <View style={[styles.detailPanel, { borderTopColor: accent }]}>
-      <View style={styles.sectionHeader}>
-        <View>
-          <Text style={styles.label}>Aktivita</Text>
-          <View style={styles.detailTitleRow}>
-            <MaterialCommunityIcons name={icon} size={25} color={accent} />
-            <Text style={styles.detailTitle}>{title}</Text>
-          </View>
-        </View>
-        <Pressable style={[styles.smallButton, { backgroundColor: accent }]}>
-          <MaterialCommunityIcons name="plus" size={18} color="#FFFFFF" />
-          <Text style={styles.smallButtonText}>{action}</Text>
-        </Pressable>
-      </View>
-      {children}
-    </View>
-  );
-}
-
-function AppMenu({
-  onClose,
-  onSelect,
-}: {
-  onClose: () => void;
-  onSelect: (section: SectionKey) => void;
-}) {
-  const menuItems: Array<{ section: SectionKey; title: string; text: string; icon: IconName }> = [
-    { section: 'profil', title: 'Já', text: 'Profil, odznaky a nastavení.', icon: 'account-circle-outline' },
-    { section: 'party', title: 'Moje party', text: 'Parta Vyškov a pozvánky.', icon: 'account-group-outline' },
-    { section: 'kronika', title: 'Kronika', text: 'Fotky, videa a hlášky.', icon: 'image-multiple-outline' },
-    { section: 'zpravy', title: 'Zprávy', text: 'Souhrny z okolí Vyškova.', icon: 'newspaper-variant-outline' },
-  ];
-
-  return (
-    <View style={styles.menuOverlay}>
-      <Pressable style={styles.menuScrim} onPress={onClose} />
-      <View style={styles.menuPanel}>
-        <View style={styles.menuHeader}>
-          <Text style={styles.menuTitle}>Další</Text>
-          <Pressable style={styles.menuCloseButton} onPress={onClose}>
-            <MaterialCommunityIcons name="close" size={22} color="#6B7280" />
-          </Pressable>
-        </View>
-        {menuItems.map((item) => (
-          <Pressable
-            key={item.title}
-            style={styles.menuItem}
-            onPress={() => onSelect(item.section)}
-          >
-            <View style={styles.menuItemIcon}>
-              <MaterialCommunityIcons name={item.icon} size={22} color="#15251F" />
-            </View>
-            <View style={styles.menuItemCopy}>
-              <Text style={styles.menuItemTitle}>{item.title}</Text>
-              <Text style={styles.drawerItemText}>{item.text}</Text>
-            </View>
-          </Pressable>
-        ))}
-        <View style={styles.menuFooter}>
-          <Text style={styles.menuFooterText}>Parta Vyškov</Text>
-        </View>
-      </View>
-    </View>
-  );
-}
-
-function BackToOpk({ onPress }: { onPress: () => void }) {
-  return (
-    <Text style={styles.sectionLink} onPress={onPress}>
-      Zpět na OPK
-    </Text>
-  );
-}
-
 function ObedScreen({ accent }: { accent: string }) {
   const restaurantsWithMenu = lunchRestaurants.filter((restaurant) => restaurant.items.length > 0);
 
@@ -414,14 +196,73 @@ function ObedScreen({ accent }: { accent: string }) {
   );
 }
 
+type PivoState = {
+  place: string;
+  time: string;
+  note: string;
+  reply: 'Jdu' | 'Možná' | 'Dnes ne';
+  arrival: string;
+};
+
+const defaultPivoState: PivoState = {
+  place: 'Radegastovna Pirát',
+  time: '19:00',
+  note: 'jen na jedno',
+  reply: 'Jdu',
+  arrival: 'za 30 min',
+};
+
+function isPivoReply(value: unknown): value is PivoState['reply'] {
+  return value === 'Jdu' || value === 'Možná' || value === 'Dnes ne';
+}
+
+function normalizePivoState(value: Partial<PivoState> | null): PivoState {
+  return {
+    place: typeof value?.place === 'string' ? value.place : defaultPivoState.place,
+    time: typeof value?.time === 'string' ? value.time : defaultPivoState.time,
+    note: typeof value?.note === 'string' ? value.note : defaultPivoState.note,
+    reply: isPivoReply(value?.reply) ? value.reply : defaultPivoState.reply,
+    arrival: typeof value?.arrival === 'string' ? value.arrival : defaultPivoState.arrival,
+  };
+}
+
 function PivoScreen({ accent }: { accent: string }) {
-  const [place, setPlace] = useState('Radegastovna Pirát');
-  const [time, setTime] = useState('19:00');
-  const [note, setNote] = useState('jen na jedno');
-  const [reply, setReply] = useState<'Jdu' | 'Možná' | 'Dnes ne'>('Jdu');
-  const [arrival, setArrival] = useState('za 30 min');
+  const [place, setPlace] = useState(defaultPivoState.place);
+  const [time, setTime] = useState(defaultPivoState.time);
+  const [note, setNote] = useState(defaultPivoState.note);
+  const [reply, setReply] = useState<PivoState['reply']>(defaultPivoState.reply);
+  const [arrival, setArrival] = useState(defaultPivoState.arrival);
   const [editingPlan, setEditingPlan] = useState(false);
+  const [storageReady, setStorageReady] = useState(false);
   const arrivalOptions = ['Teď', 'Za 15 min', 'Za 30 min', 'V 19:30'];
+
+  useEffect(() => {
+    let mounted = true;
+
+    loadJson<Partial<PivoState>>(storageKeys.pivoState).then((savedState) => {
+      if (!mounted) {
+        return;
+      }
+
+      const nextState = normalizePivoState(savedState);
+      setPlace(nextState.place);
+      setTime(nextState.time);
+      setNote(nextState.note);
+      setReply(nextState.reply);
+      setArrival(nextState.arrival);
+      setStorageReady(true);
+    });
+
+    return () => {
+      mounted = false;
+    };
+  }, []);
+
+  useEffect(() => {
+    if (storageReady) {
+      saveJson<PivoState>(storageKeys.pivoState, { place, time, note, reply, arrival });
+    }
+  }, [arrival, note, place, reply, storageReady, time]);
 
   return (
     <>
@@ -452,6 +293,7 @@ function PivoScreen({ accent }: { accent: string }) {
               </Pressable>
               <Text style={styles.voteText}>Sdílet</Text>
             </View>
+            <Text style={styles.localSaveText}>Uloženo jen v tomhle telefonu</Text>
           </View>
 
           {editingPlan && (
@@ -554,162 +396,6 @@ function PivoScreen({ accent }: { accent: string }) {
           ))}
         </View>
       </ActivityPanel>
-    </>
-  );
-}
-
-function KoloScreen({ accent }: { accent: string }) {
-  return (
-    <>
-      <View style={styles.statusPanelLight}>
-        <Text style={styles.label}>Počasí</Text>
-        <Text style={styles.darkStatusTitle}>Dnes to jde</Text>
-        <Text style={styles.darkStatusText}>22 °C · slabý vítr · bez deště · ideální okruh po práci</Text>
-      </View>
-      <ActivityPanel title="Kolo" action="Dáme kolo?" accent={accent} icon="bike">
-        <View style={styles.cardList}>
-          <Text style={styles.subsectionTitle}>Nejbližší vyjížďka</Text>
-          <View style={styles.menuCard}>
-            <Text style={styles.cardTitle}>Okruh po práci</Text>
-            <Text style={styles.cardMeta}>Dnes 17:30 · sraz u hospody · 31 km</Text>
-            <Text style={styles.cardText}>Počasí na kolo: 22 °C, slabý vítr, bez deště.</Text>
-            <Text style={styles.voteText}>2 jedou · Přidat se</Text>
-          </View>
-        </View>
-      </ActivityPanel>
-    </>
-  );
-}
-
-function KronikaScreen({ onBack }: { onBack: () => void }) {
-  return (
-    <>
-      <View style={styles.sectionHeader}>
-        <Text style={styles.sectionTitle}>Kronika</Text>
-        <BackToOpk onPress={onBack} />
-      </View>
-      <View style={styles.cardList}>
-        {memories.map((memory) => (
-          <View key={memory.title} style={styles.memoryCard}>
-            <Text style={styles.cardTitle}>{memory.title}</Text>
-            <Text style={styles.cardMeta}>{memory.meta}</Text>
-            <Text style={styles.cardText}>{memory.text}</Text>
-          </View>
-        ))}
-      </View>
-    </>
-  );
-}
-
-function ZpravyScreen({ onBack }: { onBack: () => void }) {
-  return (
-    <>
-      <View style={styles.sectionHeader}>
-        <Text style={styles.sectionTitle}>Zprávy</Text>
-        <BackToOpk onPress={onBack} />
-      </View>
-      <View style={styles.cardList}>
-        {news.map((item) => (
-          <View key={item.title} style={styles.newsCard}>
-            <Text style={styles.newsTag}>{item.tag}</Text>
-            <Text style={styles.cardTitle}>{item.title}</Text>
-            <Text style={styles.cardText}>{item.summary}</Text>
-            <View style={styles.newsActions}>
-              <Text style={styles.voteText}>Otevřít článek</Text>
-              <Text style={styles.voteText}>Sdílet do party</Text>
-            </View>
-          </View>
-        ))}
-      </View>
-    </>
-  );
-}
-
-function ProfilScreen({ onBack }: { onBack: () => void }) {
-  return (
-    <>
-      <View style={styles.sectionHeader}>
-        <Text style={styles.sectionTitle}>Profil</Text>
-        <BackToOpk onPress={onBack} />
-      </View>
-      <View style={styles.profilePanel}>
-        <Text style={styles.profileAvatar}>M</Text>
-        <Text style={styles.profileName}>Marek</Text>
-        <Text style={styles.profileMeta}>Parta Vyškov · aktivní člen · 42 akcí</Text>
-        <View style={styles.profileStats}>
-          <View style={styles.profileStat}>
-            <Text style={styles.profileStatValue}>42</Text>
-            <Text style={styles.profileStatLabel}>návštěv</Text>
-          </View>
-          <View style={styles.profileStat}>
-            <Text style={styles.profileStatValue}>18</Text>
-            <Text style={styles.profileStatLabel}>obědů</Text>
-          </View>
-          <View style={styles.profileStat}>
-            <Text style={styles.profileStatValue}>127</Text>
-            <Text style={styles.profileStatLabel}>km</Text>
-          </View>
-        </View>
-      </View>
-      <View style={styles.cardList}>
-        {['Pozvat kamaráda', 'Upozornění', 'Nastavení party', 'Odhlásit se'].map((item) => (
-          <View key={item} style={styles.rowCard}>
-            <Text style={styles.cardText}>{item}</Text>
-            <Text style={styles.cardMeta}>otevřít</Text>
-          </View>
-        ))}
-      </View>
-    </>
-  );
-}
-
-function PartyScreen({ onBack }: { onBack: () => void }) {
-  return (
-    <>
-      <View style={styles.sectionHeader}>
-        <Text style={styles.sectionTitle}>Moje party</Text>
-        <BackToOpk onPress={onBack} />
-      </View>
-
-      <View style={styles.activePartyCard}>
-        <Text style={styles.label}>Vybraná parta</Text>
-        <Text style={styles.activePartyTitle}>Parta Vyškov</Text>
-        <Text style={styles.darkStatusText}>3 členové · Vyškov · OPK režim</Text>
-        <View style={styles.partyModeRow}>
-          <Text style={styles.partyModeActive}>Oběd</Text>
-          <Text style={styles.partyModeActive}>Pivo</Text>
-          <Text style={styles.partyModeActive}>Kolo</Text>
-        </View>
-        <View style={styles.partyMembers}>
-          {['Marek', 'Tomáš', 'Pavel'].map((member) => (
-            <Text key={member} style={styles.memberChip}>
-              {member}
-            </Text>
-          ))}
-        </View>
-      </View>
-
-      <View style={styles.inviteCard}>
-        <View>
-          <Text style={styles.label}>Pozvánka</Text>
-          <Text style={styles.inviteCode}>OPK-VYSKOV</Text>
-        </View>
-        <Text style={styles.darkCardAction}>Sdílet kód</Text>
-      </View>
-
-      <View style={styles.cardList}>
-        {[
-          'Vytvořit novou partu',
-          'Pozvat kamaráda',
-          'Správci a role',
-          'Nastavení party',
-        ].map((item) => (
-          <View key={item} style={styles.rowCard}>
-            <Text style={styles.cardText}>{item}</Text>
-            <Text style={styles.cardMeta}>otevřít</Text>
-          </View>
-        ))}
-      </View>
     </>
   );
 }
@@ -1258,6 +944,12 @@ const styles = StyleSheet.create({
     color: '#0F766E',
     fontSize: 13,
     fontWeight: '900',
+    marginTop: 10,
+  },
+  localSaveText: {
+    color: '#6B7280',
+    fontSize: 12,
+    fontWeight: '700',
     marginTop: 10,
   },
   rowCard: {
