@@ -1,4 +1,5 @@
 import { StatusBar } from 'expo-status-bar';
+import { MaterialCommunityIcons } from '@expo/vector-icons';
 import { useMemo, useState } from 'react';
 import {
   Platform,
@@ -7,12 +8,14 @@ import {
   ScrollView,
   StyleSheet,
   Text,
+  TextInput,
   View,
   StatusBar as NativeStatusBar,
 } from 'react-native';
 
 type ActivityKey = 'obed' | 'pivo' | 'kolo';
 type SectionKey = ActivityKey | 'kronika' | 'zpravy' | 'profil' | 'party';
+type IconName = keyof typeof MaterialCommunityIcons.glyphMap;
 type LunchRestaurant = {
   name: string;
   delivery: boolean;
@@ -24,16 +27,16 @@ type LunchRestaurant = {
   }>;
 };
 
-const activityMeta: Record<ActivityKey, { title: string; accent: string; action: string }> = {
-  obed: { title: 'Oběd', accent: '#0F766E', action: 'Dáme oběd?' },
-  pivo: { title: 'Pivo', accent: '#B45309', action: 'Jedu tam' },
-  kolo: { title: 'Kolo', accent: '#2563EB', action: 'Dáme kolo?' },
+const activityMeta: Record<ActivityKey, { title: string; accent: string; action: string; icon: IconName }> = {
+  obed: { title: 'Oběd', accent: '#0F766E', action: 'Dáme oběd?', icon: 'silverware-fork-knife' },
+  pivo: { title: 'Pivo', accent: '#B45309', action: 'Dáme pivo?', icon: 'glass-mug-variant' },
+  kolo: { title: 'Kolo', accent: '#2563EB', action: 'Dáme kolo?', icon: 'bike' },
 };
 
-const navItems: Array<{ key: ActivityKey; label: string; mark: string }> = [
-  { key: 'obed', label: 'Oběd', mark: 'O' },
-  { key: 'pivo', label: 'Pivo', mark: 'P' },
-  { key: 'kolo', label: 'Kolo', mark: 'K' },
+const navItems: Array<{ key: ActivityKey; label: string; icon: IconName }> = [
+  { key: 'obed', label: 'Oběd', icon: 'silverware-fork-knife' },
+  { key: 'pivo', label: 'Pivo', icon: 'glass-mug-variant' },
+  { key: 'kolo', label: 'Kolo', icon: 'bike' },
 ];
 
 const lunchRestaurants: LunchRestaurant[] = [
@@ -157,6 +160,12 @@ const news = [
   },
 ];
 
+const beerReplies = [
+  { name: 'Marek', status: 'Jde', arrival: '19:00' },
+  { name: 'Tomáš', status: 'Jde', arrival: 'za 30 min' },
+  { name: 'Pavel', status: 'Možná', arrival: '' },
+];
+
 export default function App() {
   const [selectedSection, setSelectedSection] = useState<SectionKey>('pivo');
   const [menuOpen, setMenuOpen] = useState(false);
@@ -178,15 +187,15 @@ export default function App() {
         <ScrollView contentContainerStyle={styles.screen} showsVerticalScrollIndicator={false}>
           <View style={styles.header}>
             <View style={styles.headerLeft}>
-              <Text style={styles.appName}>OPK</Text>
+              <OpkLogo />
               <Pressable style={styles.partyPill} onPress={() => setSelectedSection('party')}>
                 <Text style={styles.partyLabel}>Parta</Text>
                 <Text style={styles.partyName}>Vyškov</Text>
-                <Text style={styles.partyChevron}>⌄</Text>
+                <MaterialCommunityIcons name="chevron-down" size={18} color="#6B7280" />
               </Pressable>
             </View>
             <Pressable style={styles.menuButton} onPress={() => setMenuOpen((open) => !open)}>
-              <Text style={styles.menuButtonText}>☰</Text>
+              <MaterialCommunityIcons name="menu" size={24} color="#111827" />
             </Pressable>
           </View>
 
@@ -219,9 +228,11 @@ export default function App() {
                 onPress={() => setSelectedSection(item.key)}
                 style={[styles.navButton, isActive && styles.navButtonActive]}
               >
-                <Text style={[styles.navMark, isActive && styles.navMarkActive]}>
-                  {item.mark}
-                </Text>
+                <MaterialCommunityIcons
+                  name={item.icon}
+                  size={23}
+                  color={isActive ? '#F8B84E' : '#6B7280'}
+                />
                 <Text style={[styles.navItem, isActive && styles.navItemActive]}>
                   {item.label}
                 </Text>
@@ -234,15 +245,36 @@ export default function App() {
   );
 }
 
+function OpkLogo() {
+  return (
+    <View style={styles.logoMark}>
+      <View style={styles.logoIconRow}>
+        <View style={[styles.logoIconCell, styles.logoObedCell]}>
+          <MaterialCommunityIcons name="silverware-fork-knife" size={13} color="#F8FAFC" />
+        </View>
+        <View style={[styles.logoIconCell, styles.logoPivoCell]}>
+          <MaterialCommunityIcons name="glass-mug-variant" size={15} color="#1F2937" />
+        </View>
+        <View style={[styles.logoIconCell, styles.logoKoloCell]}>
+          <MaterialCommunityIcons name="bike" size={14} color="#F8FAFC" />
+        </View>
+      </View>
+      <Text style={styles.logoText}>OPK</Text>
+    </View>
+  );
+}
+
 function ActivityPanel({
   title,
   action,
   accent,
+  icon,
   children,
 }: {
   title: string;
   action: string;
   accent: string;
+  icon: IconName;
   children: React.ReactNode;
 }) {
   return (
@@ -250,9 +282,13 @@ function ActivityPanel({
       <View style={styles.sectionHeader}>
         <View>
           <Text style={styles.label}>Aktivita</Text>
-          <Text style={styles.detailTitle}>{title}</Text>
+          <View style={styles.detailTitleRow}>
+            <MaterialCommunityIcons name={icon} size={25} color={accent} />
+            <Text style={styles.detailTitle}>{title}</Text>
+          </View>
         </View>
         <Pressable style={[styles.smallButton, { backgroundColor: accent }]}>
+          <MaterialCommunityIcons name="plus" size={18} color="#FFFFFF" />
           <Text style={styles.smallButtonText}>{action}</Text>
         </Pressable>
       </View>
@@ -268,11 +304,11 @@ function AppMenu({
   onClose: () => void;
   onSelect: (section: SectionKey) => void;
 }) {
-  const menuItems: Array<{ section: SectionKey; title: string; text: string }> = [
-    { section: 'profil', title: 'Já', text: 'Profil, odznaky a nastavení.' },
-    { section: 'party', title: 'Moje party', text: 'Parta Vyškov a pozvánky.' },
-    { section: 'kronika', title: 'Kronika', text: 'Fotky, videa a hlášky.' },
-    { section: 'zpravy', title: 'Zprávy', text: 'Souhrny z okolí Vyškova.' },
+  const menuItems: Array<{ section: SectionKey; title: string; text: string; icon: IconName }> = [
+    { section: 'profil', title: 'Já', text: 'Profil, odznaky a nastavení.', icon: 'account-circle-outline' },
+    { section: 'party', title: 'Moje party', text: 'Parta Vyškov a pozvánky.', icon: 'account-group-outline' },
+    { section: 'kronika', title: 'Kronika', text: 'Fotky, videa a hlášky.', icon: 'image-multiple-outline' },
+    { section: 'zpravy', title: 'Zprávy', text: 'Souhrny z okolí Vyškova.', icon: 'newspaper-variant-outline' },
   ];
 
   return (
@@ -280,9 +316,9 @@ function AppMenu({
       <Pressable style={styles.menuScrim} onPress={onClose} />
       <View style={styles.menuPanel}>
         <View style={styles.menuHeader}>
-          <Text style={styles.menuTitle}>Menu</Text>
+          <Text style={styles.menuTitle}>Další</Text>
           <Pressable style={styles.menuCloseButton} onPress={onClose}>
-            <Text style={styles.menuCloseText}>×</Text>
+            <MaterialCommunityIcons name="close" size={22} color="#6B7280" />
           </Pressable>
         </View>
         {menuItems.map((item) => (
@@ -291,12 +327,17 @@ function AppMenu({
             style={styles.menuItem}
             onPress={() => onSelect(item.section)}
           >
-            <Text style={styles.menuItemTitle}>{item.title}</Text>
-            <Text style={styles.drawerItemText}>{item.text}</Text>
+            <View style={styles.menuItemIcon}>
+              <MaterialCommunityIcons name={item.icon} size={22} color="#15251F" />
+            </View>
+            <View style={styles.menuItemCopy}>
+              <Text style={styles.menuItemTitle}>{item.title}</Text>
+              <Text style={styles.drawerItemText}>{item.text}</Text>
+            </View>
           </Pressable>
         ))}
         <View style={styles.menuFooter}>
-          <Text style={styles.menuFooterText}>Oběd · Pivo · Kolo</Text>
+          <Text style={styles.menuFooterText}>Parta Vyškov</Text>
         </View>
       </View>
     </View>
@@ -323,7 +364,7 @@ function ObedScreen({ accent }: { accent: string }) {
           {restaurantsWithMenu.length} podniků s obědovou nabídkou · zdroj Meníčka.cz
         </Text>
       </View>
-      <ActivityPanel title="Oběd" action="Dáme oběd?" accent={accent}>
+      <ActivityPanel title="Oběd" action="Dáme oběd?" accent={accent} icon="silverware-fork-knife">
         <View style={styles.cardList}>
           <Text style={styles.subsectionTitle}>Vyškov · podobně jako na webu</Text>
           {restaurantsWithMenu.map((restaurant) => (
@@ -331,7 +372,12 @@ function ObedScreen({ accent }: { accent: string }) {
               <View style={styles.restaurantHeader}>
                 <Text style={styles.cardTitle}>{restaurant.name}</Text>
                 <View style={styles.chipRow}>
-                  {restaurant.delivery && <Text style={styles.deliveryChip}>Rozvoz</Text>}
+                  {restaurant.delivery && (
+                    <View style={styles.deliveryChip}>
+                      <MaterialCommunityIcons name="truck-delivery-outline" size={12} color="#0369A1" />
+                      <Text style={styles.deliveryChipText}>Rozvoz</Text>
+                    </View>
+                  )}
                   <Text style={restaurant.items.length > 0 ? styles.openChip : styles.closedChip}>
                     {restaurant.items.length > 0 ? 'Menu' : 'Bez menu'}
                   </Text>
@@ -369,25 +415,141 @@ function ObedScreen({ accent }: { accent: string }) {
 }
 
 function PivoScreen({ accent }: { accent: string }) {
+  const [place, setPlace] = useState('Radegastovna Pirát');
+  const [time, setTime] = useState('19:00');
+  const [note, setNote] = useState('jen na jedno');
+  const [reply, setReply] = useState<'Jdu' | 'Možná' | 'Dnes ne'>('Jdu');
+  const [arrival, setArrival] = useState('za 30 min');
+  const [editingPlan, setEditingPlan] = useState(false);
+  const arrivalOptions = ['Teď', 'Za 15 min', 'Za 30 min', 'V 19:30'];
+
   return (
     <>
-      <View style={styles.statusPanel}>
-        <View>
-          <Text style={styles.labelOnDark}>Dnes</Text>
-          <Text style={styles.statusTitle}>Hospoda je otevřená</Text>
-          <Text style={styles.statusText}>Tomáš je tam · Marek jede · Pavel zatím mlčí</Text>
-        </View>
-        <Pressable style={styles.primaryButton}>
-          <Text style={styles.primaryButtonText}>Jsem tady</Text>
-        </Pressable>
+      <View style={styles.statusPanelLight}>
+        <Text style={styles.label}>Dnes</Text>
+        <Text style={styles.darkStatusTitle}>Dáme pivo?</Text>
+        <Text style={styles.darkStatusText}>
+          Kde: {place || 'není vybráno'} · Kdy: {time || 'domluví se'}
+        </Text>
       </View>
-      <ActivityPanel title="Pivo" action="Jedu tam" accent={accent}>
+      <ActivityPanel title="Pivo" action="Dáme pivo?" accent={accent} icon="glass-mug-variant">
         <View style={styles.cardList}>
-          <Text style={styles.subsectionTitle}>Kdo je v hospodě?</Text>
-          {['Tomáš · Jsem tady', 'Marek · Jedu tam', 'Pavel · Dneska ne'].map((item) => (
-            <View key={item} style={styles.rowCard}>
-              <Text style={styles.cardText}>{item}</Text>
-              <Text style={styles.cardMeta}>upravit stav</Text>
+          <Text style={styles.subsectionTitle}>Pivo dneska</Text>
+          <View style={styles.restaurantCard}>
+            <View style={styles.planHeader}>
+              <View style={styles.planIcon}>
+                <MaterialCommunityIcons name="glass-mug-variant" size={26} color="#B45309" />
+              </View>
+              <View style={styles.planCopy}>
+                <Text style={styles.cardTitle}>{place || 'Místo není vybráno'}</Text>
+                <Text style={styles.cardMeta}>{time || 'čas se domluví'} · vyhlásil Marek</Text>
+              </View>
+            </View>
+            {!!note && <Text style={styles.cardText}>{note}</Text>}
+            <View style={styles.planActions}>
+              <Pressable onPress={() => setEditingPlan((value) => !value)}>
+                <Text style={styles.voteText}>{editingPlan ? 'Sbalit plán' : 'Upravit plán'}</Text>
+              </Pressable>
+              <Text style={styles.voteText}>Sdílet</Text>
+            </View>
+          </View>
+
+          {editingPlan && (
+            <View style={styles.restaurantCard}>
+              <View style={styles.formField}>
+                <Text style={styles.inputLabel}>Kde?</Text>
+                <TextInput
+                  value={place}
+                  onChangeText={setPlace}
+                  placeholder="Napiš podnik nebo místo"
+                  placeholderTextColor="#9CA3AF"
+                  style={styles.textInput}
+                />
+              </View>
+              <View style={styles.formField}>
+                <Text style={styles.inputLabel}>Kdy?</Text>
+                <TextInput
+                  value={time}
+                  onChangeText={setTime}
+                  placeholder="Teď, 19:00, večer..."
+                  placeholderTextColor="#9CA3AF"
+                  style={styles.textInput}
+                />
+              </View>
+              <View style={styles.formField}>
+                <Text style={styles.inputLabel}>Poznámka</Text>
+                <TextInput
+                  value={note}
+                  onChangeText={setNote}
+                  placeholder="Třeba: jen na jedno"
+                  placeholderTextColor="#9CA3AF"
+                  style={styles.textInput}
+                />
+              </View>
+              <Pressable
+                style={[styles.primaryButton, styles.fullWidthButton]}
+                onPress={() => setEditingPlan(false)}
+              >
+                <MaterialCommunityIcons name="check" size={18} color="#1F2937" />
+                <Text style={styles.primaryButtonText}>Uložit plán</Text>
+              </Pressable>
+            </View>
+          )}
+
+          <Text style={styles.subsectionTitle}>Moje odpověď</Text>
+          <View style={styles.restaurantCard}>
+            <View style={styles.replyRow}>
+              {(['Jdu', 'Možná', 'Dnes ne'] as const).map((option) => {
+                const isActive = reply === option;
+
+                return (
+                  <Pressable
+                    key={option}
+                    onPress={() => setReply(option)}
+                    style={[styles.replyButton, isActive && styles.replyButtonActive]}
+                  >
+                    <Text style={[styles.replyButtonText, isActive && styles.replyButtonTextActive]}>
+                      {option}
+                    </Text>
+                  </Pressable>
+                );
+              })}
+            </View>
+
+            {reply === 'Jdu' && (
+              <>
+                <Text style={styles.inputLabel}>Kdy dorazíš?</Text>
+                <View style={styles.arrivalRow}>
+                  {arrivalOptions.map((option) => {
+                    const isActive = arrival === option;
+
+                    return (
+                      <Pressable
+                        key={option}
+                        onPress={() => setArrival(option)}
+                        style={[styles.arrivalChip, isActive && styles.arrivalChipActive]}
+                      >
+                        <Text style={[styles.arrivalChipText, isActive && styles.arrivalChipTextActive]}>
+                          {option}
+                        </Text>
+                      </Pressable>
+                    );
+                  })}
+                </View>
+              </>
+            )}
+          </View>
+
+          <Text style={styles.subsectionTitle}>Stav party</Text>
+          {beerReplies.map((person) => (
+            <View key={person.name} style={styles.rowCard}>
+              <View>
+                <Text style={styles.cardText}>{person.name}</Text>
+                {!!person.arrival && <Text style={styles.cardMeta}>dorazí {person.arrival}</Text>}
+              </View>
+              <Text style={person.status === 'Jde' ? styles.goingStatus : styles.maybeStatus}>
+                {person.status}
+              </Text>
             </View>
           ))}
         </View>
@@ -404,7 +566,7 @@ function KoloScreen({ accent }: { accent: string }) {
         <Text style={styles.darkStatusTitle}>Dnes to jde</Text>
         <Text style={styles.darkStatusText}>22 °C · slabý vítr · bez deště · ideální okruh po práci</Text>
       </View>
-      <ActivityPanel title="Kolo" action="Dáme kolo?" accent={accent}>
+      <ActivityPanel title="Kolo" action="Dáme kolo?" accent={accent} icon="bike">
         <View style={styles.cardList}>
           <Text style={styles.subsectionTitle}>Nejbližší vyjížďka</Text>
           <View style={styles.menuCard}>
@@ -473,7 +635,21 @@ function ProfilScreen({ onBack }: { onBack: () => void }) {
       <View style={styles.profilePanel}>
         <Text style={styles.profileAvatar}>M</Text>
         <Text style={styles.profileName}>Marek</Text>
-        <Text style={styles.profileMeta}>Parta Vyškov · Klíčník · 42 návštěv</Text>
+        <Text style={styles.profileMeta}>Parta Vyškov · aktivní člen · 42 akcí</Text>
+        <View style={styles.profileStats}>
+          <View style={styles.profileStat}>
+            <Text style={styles.profileStatValue}>42</Text>
+            <Text style={styles.profileStatLabel}>návštěv</Text>
+          </View>
+          <View style={styles.profileStat}>
+            <Text style={styles.profileStatValue}>18</Text>
+            <Text style={styles.profileStatLabel}>obědů</Text>
+          </View>
+          <View style={styles.profileStat}>
+            <Text style={styles.profileStatValue}>127</Text>
+            <Text style={styles.profileStatLabel}>km</Text>
+          </View>
+        </View>
       </View>
       <View style={styles.cardList}>
         {['Pozvat kamaráda', 'Upozornění', 'Nastavení party', 'Odhlásit se'].map((item) => (
@@ -498,7 +674,12 @@ function PartyScreen({ onBack }: { onBack: () => void }) {
       <View style={styles.activePartyCard}>
         <Text style={styles.label}>Vybraná parta</Text>
         <Text style={styles.activePartyTitle}>Parta Vyškov</Text>
-        <Text style={styles.darkStatusText}>3 členové · domovská hospoda · OPK režim</Text>
+        <Text style={styles.darkStatusText}>3 členové · Vyškov · OPK režim</Text>
+        <View style={styles.partyModeRow}>
+          <Text style={styles.partyModeActive}>Oběd</Text>
+          <Text style={styles.partyModeActive}>Pivo</Text>
+          <Text style={styles.partyModeActive}>Kolo</Text>
+        </View>
         <View style={styles.partyMembers}>
           {['Marek', 'Tomáš', 'Pavel'].map((member) => (
             <Text key={member} style={styles.memberChip}>
@@ -536,15 +717,16 @@ function PartyScreen({ onBack }: { onBack: () => void }) {
 const styles = StyleSheet.create({
   safeArea: {
     flex: 1,
-    backgroundColor: '#F6F3ED',
+    backgroundColor: '#F4F1EA',
     paddingTop: Platform.OS === 'android' ? NativeStatusBar.currentHeight ?? 0 : 0,
   },
   appShell: {
     flex: 1,
   },
   screen: {
-    gap: 14,
-    padding: 20,
+    gap: 16,
+    paddingHorizontal: 18,
+    paddingTop: 14,
     paddingBottom: 112,
   },
   header: {
@@ -559,30 +741,68 @@ const styles = StyleSheet.create({
     flex: 1,
     gap: 10,
   },
-  appName: {
+  logoMark: {
+    alignItems: 'center',
     backgroundColor: '#15251F',
+    borderColor: '#2D443A',
     borderRadius: 8,
-    color: '#F8B84E',
-    fontSize: 17,
-    fontWeight: '900',
-    height: 38,
-    letterSpacing: 0,
-    lineHeight: 38,
+    borderWidth: 1,
+    elevation: 2,
+    gap: 3,
+    height: 44,
+    justifyContent: 'center',
     overflow: 'hidden',
-    textAlign: 'center',
-    width: 48,
+    paddingHorizontal: 7,
+    shadowColor: '#111827',
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.06,
+    shadowRadius: 6,
+    width: 70,
+  },
+  logoIconRow: {
+    alignItems: 'center',
+    flexDirection: 'row',
+    gap: 2,
+  },
+  logoIconCell: {
+    alignItems: 'center',
+    borderRadius: 5,
+    height: 20,
+    justifyContent: 'center',
+    width: 18,
+  },
+  logoObedCell: {
+    backgroundColor: '#0F766E',
+  },
+  logoPivoCell: {
+    backgroundColor: '#F8B84E',
+  },
+  logoKoloCell: {
+    backgroundColor: '#2563EB',
+  },
+  logoText: {
+    color: '#F8FAFC',
+    fontSize: 10,
+    fontWeight: '900',
+    letterSpacing: 0,
+    lineHeight: 11,
   },
   partyPill: {
     alignItems: 'center',
     backgroundColor: '#FFFFFF',
-    borderColor: '#E5E0D8',
+    borderColor: '#DED8CF',
     borderRadius: 8,
     borderWidth: 1,
+    elevation: 2,
     flexDirection: 'row',
     flexShrink: 1,
     gap: 7,
     minHeight: 38,
     paddingHorizontal: 11,
+    shadowColor: '#111827',
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.06,
+    shadowRadius: 6,
   },
   partyLabel: {
     color: '#6B7280',
@@ -596,40 +816,43 @@ const styles = StyleSheet.create({
     fontSize: 16,
     fontWeight: '900',
   },
-  partyChevron: {
-    color: '#6B7280',
-    fontSize: 15,
-    fontWeight: '900',
-    marginTop: -2,
-  },
   menuButton: {
     alignItems: 'center',
     backgroundColor: '#FFFFFF',
-    borderColor: '#E5E0D8',
+    borderColor: '#DED8CF',
     borderRadius: 8,
     borderWidth: 1,
+    elevation: 2,
     height: 38,
     justifyContent: 'center',
+    shadowColor: '#111827',
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.06,
+    shadowRadius: 6,
     width: 38,
-  },
-  menuButtonText: {
-    color: '#111827',
-    fontSize: 21,
-    fontWeight: '900',
-    lineHeight: 25,
   },
   statusPanel: {
     backgroundColor: '#15251F',
     borderRadius: 8,
+    elevation: 5,
     gap: 18,
     padding: 18,
+    shadowColor: '#111827',
+    shadowOffset: { width: 0, height: 6 },
+    shadowOpacity: 0.14,
+    shadowRadius: 14,
   },
   statusPanelLight: {
     backgroundColor: '#FFFFFF',
-    borderColor: '#E5E0D8',
+    borderColor: '#E1DBD2',
     borderRadius: 8,
     borderWidth: 1,
+    elevation: 2,
     padding: 18,
+    shadowColor: '#111827',
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.06,
+    shadowRadius: 8,
   },
   label: {
     color: '#6B7280',
@@ -674,7 +897,11 @@ const styles = StyleSheet.create({
   primaryButton: {
     alignItems: 'center',
     backgroundColor: '#F8B84E',
+    borderColor: '#F6D186',
+    borderWidth: 1,
     borderRadius: 8,
+    flexDirection: 'row',
+    gap: 8,
     minHeight: 48,
     justifyContent: 'center',
     paddingHorizontal: 18,
@@ -703,20 +930,34 @@ const styles = StyleSheet.create({
   },
   detailPanel: {
     backgroundColor: '#FFFFFF',
+    borderColor: '#E1DBD2',
     borderRadius: 8,
+    borderWidth: 1,
     borderTopWidth: 5,
+    elevation: 2,
     gap: 14,
     padding: 16,
+    shadowColor: '#111827',
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.06,
+    shadowRadius: 8,
   },
   detailTitle: {
     color: '#111827',
     fontSize: 24,
     fontWeight: '900',
+  },
+  detailTitleRow: {
+    alignItems: 'center',
+    flexDirection: 'row',
+    gap: 8,
     marginTop: 2,
   },
   smallButton: {
     alignItems: 'center',
     borderRadius: 8,
+    flexDirection: 'row',
+    gap: 5,
     minHeight: 42,
     justifyContent: 'center',
     paddingHorizontal: 12,
@@ -735,7 +976,7 @@ const styles = StyleSheet.create({
     fontWeight: '900',
   },
   menuCard: {
-    backgroundColor: '#F9FAFB',
+    backgroundColor: '#FBFAF8',
     borderColor: '#E5E7EB',
     borderRadius: 8,
     borderWidth: 1,
@@ -743,10 +984,15 @@ const styles = StyleSheet.create({
   },
   restaurantCard: {
     backgroundColor: '#FFFFFF',
-    borderColor: '#E5E0D8',
+    borderColor: '#E1DBD2',
     borderRadius: 8,
     borderWidth: 1,
+    elevation: 1,
     padding: 14,
+    shadowColor: '#111827',
+    shadowOffset: { width: 0, height: 1 },
+    shadowOpacity: 0.04,
+    shadowRadius: 5,
   },
   restaurantHeader: {
     alignItems: 'flex-start',
@@ -758,14 +1004,19 @@ const styles = StyleSheet.create({
     gap: 6,
   },
   deliveryChip: {
+    alignItems: 'center',
     backgroundColor: '#E0F2FE',
     borderRadius: 6,
-    color: '#0369A1',
-    fontSize: 11,
-    fontWeight: '900',
+    flexDirection: 'row',
+    gap: 4,
     overflow: 'hidden',
     paddingHorizontal: 7,
     paddingVertical: 4,
+  },
+  deliveryChipText: {
+    color: '#0369A1',
+    fontSize: 11,
+    fontWeight: '900',
   },
   openChip: {
     backgroundColor: '#DCFCE7',
@@ -787,14 +1038,152 @@ const styles = StyleSheet.create({
     paddingHorizontal: 7,
     paddingVertical: 4,
   },
+  beerVoteChip: {
+    backgroundColor: '#FEF3C7',
+    borderRadius: 6,
+    color: '#92400E',
+    fontSize: 11,
+    fontWeight: '900',
+    overflow: 'hidden',
+    paddingHorizontal: 7,
+    paddingVertical: 4,
+  },
+  beerTagRow: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    gap: 6,
+    marginTop: 10,
+  },
+  beerTag: {
+    backgroundColor: '#FFF7ED',
+    borderColor: '#FED7AA',
+    borderRadius: 6,
+    borderWidth: 1,
+    color: '#9A3412',
+    fontSize: 11,
+    fontWeight: '900',
+    overflow: 'hidden',
+    paddingHorizontal: 7,
+    paddingVertical: 4,
+  },
+  formField: {
+    gap: 6,
+    marginBottom: 12,
+  },
+  inputLabel: {
+    color: '#374151',
+    fontSize: 13,
+    fontWeight: '900',
+  },
+  textInput: {
+    backgroundColor: '#FBFAF8',
+    borderColor: '#E1DBD2',
+    borderRadius: 8,
+    borderWidth: 1,
+    color: '#111827',
+    fontSize: 16,
+    fontWeight: '800',
+    minHeight: 46,
+    paddingHorizontal: 12,
+    paddingVertical: 10,
+  },
+  fullWidthButton: {
+    marginTop: 2,
+  },
+  planHeader: {
+    alignItems: 'center',
+    flexDirection: 'row',
+    gap: 12,
+  },
+  planIcon: {
+    alignItems: 'center',
+    backgroundColor: '#FEF3C7',
+    borderRadius: 8,
+    height: 48,
+    justifyContent: 'center',
+    width: 48,
+  },
+  planCopy: {
+    flex: 1,
+  },
+  planActions: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    gap: 16,
+  },
+  replyRow: {
+    flexDirection: 'row',
+    gap: 8,
+    marginBottom: 14,
+  },
+  replyButton: {
+    alignItems: 'center',
+    backgroundColor: '#FBFAF8',
+    borderColor: '#E1DBD2',
+    borderRadius: 8,
+    borderWidth: 1,
+    flex: 1,
+    minHeight: 42,
+    justifyContent: 'center',
+    paddingHorizontal: 8,
+  },
+  replyButtonActive: {
+    backgroundColor: '#15251F',
+    borderColor: '#15251F',
+  },
+  replyButtonText: {
+    color: '#4B5563',
+    fontSize: 13,
+    fontWeight: '900',
+    textAlign: 'center',
+  },
+  replyButtonTextActive: {
+    color: '#FFFFFF',
+  },
+  arrivalRow: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    gap: 7,
+    marginTop: 8,
+  },
+  arrivalChip: {
+    backgroundColor: '#FBFAF8',
+    borderColor: '#E1DBD2',
+    borderRadius: 8,
+    borderWidth: 1,
+    paddingHorizontal: 10,
+    paddingVertical: 8,
+  },
+  arrivalChipActive: {
+    backgroundColor: '#FEF3C7',
+    borderColor: '#F8B84E',
+  },
+  arrivalChipText: {
+    color: '#4B5563',
+    fontSize: 12,
+    fontWeight: '900',
+  },
+  arrivalChipTextActive: {
+    color: '#92400E',
+  },
+  goingStatus: {
+    color: '#166534',
+    fontSize: 13,
+    fontWeight: '900',
+  },
+  maybeStatus: {
+    color: '#92400E',
+    fontSize: 13,
+    fontWeight: '900',
+  },
   menuRows: {
-    borderTopColor: '#E5E7EB',
+    borderTopColor: '#E8E2DA',
     borderTopWidth: 1,
     marginTop: 12,
   },
   menuRow: {
     alignItems: 'flex-start',
-    borderBottomColor: '#EEF0F3',
+    borderBottomColor: '#F0ECE6',
     borderBottomWidth: 1,
     flexDirection: 'row',
     gap: 10,
@@ -866,15 +1255,15 @@ const styles = StyleSheet.create({
     marginTop: 8,
   },
   voteText: {
-    color: '#2563EB',
+    color: '#0F766E',
     fontSize: 13,
     fontWeight: '900',
     marginTop: 10,
   },
   rowCard: {
     alignItems: 'center',
-    backgroundColor: '#F9FAFB',
-    borderColor: '#E5E7EB',
+    backgroundColor: '#FFFFFF',
+    borderColor: '#E1DBD2',
     borderRadius: 8,
     borderWidth: 1,
     flexDirection: 'row',
@@ -883,14 +1272,14 @@ const styles = StyleSheet.create({
   },
   memoryCard: {
     backgroundColor: '#FFFFFF',
-    borderColor: '#E5E0D8',
+    borderColor: '#E1DBD2',
     borderRadius: 8,
     borderWidth: 1,
     padding: 15,
   },
   newsCard: {
     backgroundColor: '#FFFFFF',
-    borderColor: '#E5E0D8',
+    borderColor: '#E1DBD2',
     borderRadius: 8,
     borderWidth: 1,
     padding: 15,
@@ -921,7 +1310,7 @@ const styles = StyleSheet.create({
     zIndex: 10,
   },
   menuScrim: {
-    backgroundColor: 'rgba(17, 24, 39, 0.26)',
+    backgroundColor: 'rgba(17, 24, 39, 0.32)',
     bottom: 0,
     left: 0,
     position: 'absolute',
@@ -930,7 +1319,7 @@ const styles = StyleSheet.create({
   },
   menuPanel: {
     backgroundColor: '#FFFFFF',
-    borderColor: '#E5E0D8',
+    borderColor: '#E1DBD2',
     borderRadius: 8,
     borderWidth: 1,
     elevation: 14,
@@ -943,7 +1332,7 @@ const styles = StyleSheet.create({
     shadowOpacity: 0.16,
     shadowRadius: 18,
     top: 12,
-    width: 260,
+    width: 274,
   },
   menuHeader: {
     alignItems: 'center',
@@ -963,18 +1352,26 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
     width: 34,
   },
-  menuCloseText: {
-    color: '#6B7280',
-    fontSize: 27,
-    fontWeight: '700',
-    lineHeight: 30,
-  },
   menuItem: {
-    backgroundColor: '#F9FAFB',
-    borderColor: '#EEF0F3',
+    alignItems: 'center',
+    backgroundColor: '#FBFAF8',
+    borderColor: '#EEE8DF',
     borderRadius: 8,
     borderWidth: 1,
+    flexDirection: 'row',
+    gap: 11,
     padding: 12,
+  },
+  menuItemIcon: {
+    alignItems: 'center',
+    backgroundColor: '#F4F1EA',
+    borderRadius: 8,
+    height: 40,
+    justifyContent: 'center',
+    width: 40,
+  },
+  menuItemCopy: {
+    flex: 1,
   },
   menuItemTitle: {
     color: '#111827',
@@ -1003,7 +1400,7 @@ const styles = StyleSheet.create({
   profilePanel: {
     alignItems: 'center',
     backgroundColor: '#FFFFFF',
-    borderColor: '#E5E0D8',
+    borderColor: '#E1DBD2',
     borderRadius: 8,
     borderWidth: 1,
     padding: 20,
@@ -1033,9 +1430,36 @@ const styles = StyleSheet.create({
     marginTop: 4,
     textAlign: 'center',
   },
+  profileStats: {
+    flexDirection: 'row',
+    gap: 8,
+    marginTop: 18,
+    width: '100%',
+  },
+  profileStat: {
+    backgroundColor: '#FBFAF8',
+    borderColor: '#EEE8DF',
+    borderRadius: 8,
+    borderWidth: 1,
+    flex: 1,
+    padding: 10,
+  },
+  profileStatValue: {
+    color: '#111827',
+    fontSize: 18,
+    fontWeight: '900',
+    textAlign: 'center',
+  },
+  profileStatLabel: {
+    color: '#6B7280',
+    fontSize: 11,
+    fontWeight: '900',
+    marginTop: 3,
+    textAlign: 'center',
+  },
   activePartyCard: {
     backgroundColor: '#FFFFFF',
-    borderColor: '#E5E0D8',
+    borderColor: '#E1DBD2',
     borderRadius: 8,
     borderWidth: 1,
     padding: 18,
@@ -1045,6 +1469,21 @@ const styles = StyleSheet.create({
     fontSize: 26,
     fontWeight: '900',
     marginTop: 6,
+  },
+  partyModeRow: {
+    flexDirection: 'row',
+    gap: 7,
+    marginTop: 14,
+  },
+  partyModeActive: {
+    backgroundColor: '#15251F',
+    borderRadius: 6,
+    color: '#F8B84E',
+    fontSize: 12,
+    fontWeight: '900',
+    overflow: 'hidden',
+    paddingHorizontal: 8,
+    paddingVertical: 5,
   },
   partyMembers: {
     flexDirection: 'row',
@@ -1083,18 +1522,18 @@ const styles = StyleSheet.create({
   },
   bottomNav: {
     backgroundColor: '#FFFFFF',
-    borderColor: '#E5E0D8',
-    borderRadius: 18,
+    borderColor: '#DED8CF',
+    borderRadius: 12,
     borderWidth: 1,
-    bottom: 0,
+    bottom: 10,
     elevation: 12,
     flexDirection: 'row',
     gap: 8,
     justifyContent: 'space-between',
-    left: 20,
+    left: 18,
     padding: 8,
     position: 'absolute',
-    right: 20,
+    right: 18,
     shadowColor: '#111827',
     shadowOffset: { width: 0, height: 8 },
     shadowOpacity: 0.14,
@@ -1102,7 +1541,7 @@ const styles = StyleSheet.create({
   },
   navButton: {
     alignItems: 'center',
-    borderRadius: 12,
+    borderRadius: 8,
     flex: 1,
     gap: 3,
     justifyContent: 'center',
@@ -1111,16 +1550,6 @@ const styles = StyleSheet.create({
   },
   navButtonActive: {
     backgroundColor: '#15251F',
-  },
-  navMark: {
-    color: '#6B7280',
-    fontSize: 19,
-    fontWeight: '900',
-    lineHeight: 22,
-    textAlign: 'center',
-  },
-  navMarkActive: {
-    color: '#F8B84E',
   },
   navItem: {
     color: '#6B7280',
