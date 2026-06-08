@@ -1,0 +1,47 @@
+{
+  "project_info": {
+    "project_number": "128430670650",
+    "project_id": "obed-pivo-kolo",
+    "storage_bucket": "obed-pivo-kolo.firebasestorage.app"
+  },
+  "client": [
+    {
+      "client_info": {
+        "mobilesdk_app_id": "1:128430670650:android:d4e0c80377f5680cd40603",
+        "android_client_info": {
+          "package_name": "cz.sev.opk"
+        }
+      },
+      "oauth_client": [
+        {
+          "client_id": "128430670650-3gcl5kp28h6c6ubp20ilc45chqrtnpqp.apps.googleusercontent.com",
+          "client_type": 1,
+          "android_info": {
+            "package_name": "cz.sev.opk",
+            "certificate_hash": "5e8f16062ea3cd2c4a0d547876baa6f38cabf625"
+          }
+        },
+        {
+          "client_id": "128430670650-ucnescej399g5tn7oapdp4l1mcu4l6oa.apps.googleusercontent.com",
+          "client_type": 3
+        }
+      ],
+      "api_key": [
+        {
+          "current_key": "AIzaSyDuAOn-rcJ01KFA-5c4DheOCmgplHcsb1Q"
+        }
+      ],
+      "services": {
+        "appinvite_service": {
+          "other_platform_oauth_client": [
+            {
+              "client_id": "128430670650-ucnescej399g5tn7oapdp4l1mcu4l6oa.apps.googleusercontent.com",
+              "client_type": 3
+            }
+          ]
+        }
+      }
+    }
+  ],
+  "configuration_version": "1"
+}

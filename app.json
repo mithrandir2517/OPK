@@ -3,11 +3,13 @@
     "name": "Oběd Pivo Kolo",
     "slug": "obed-pivo-kolo",
     "version": "1.0.0",
+    "scheme": "opk",
     "orientation": "portrait",
     "icon": "./assets/icon.png",
     "userInterfaceStyle": "light",
     "android": {
       "package": "cz.sev.opk",
+      "googleServicesFile": "./google-services.json",
       "adaptiveIcon": {
         "backgroundColor": "#15251F",
         "foregroundImage": "./assets/android-icon-foreground.png"
@@ -22,8 +24,8 @@
       "favicon": "./assets/favicon.png"
     },
     "plugins": [
-      "expo-web-browser",
-      "expo-font"
+      "expo-font",
+      "@react-native-google-signin/google-signin"
     ],
     "extra": {
       "eas": {

@@ -1,4 +1,5 @@
-import { Pressable, StyleSheet, Text, TextInput, View } from 'react-native';
+import { type ReactNode } from 'react';
+import { Alert, Pressable, StyleSheet, Text, TextInput, View } from 'react-native';
 import { BackToOpk } from '../components/BackToOpk';
 import { PartyState, UserProfile } from '../types';
 
@@ -7,6 +8,7 @@ type ProfilScreenProps = {
   party: PartyState;
   profile: UserProfile;
   firebaseUser: null | { uid: string; displayName: string; email: string | null; photoURL: string | null };
+  googleAuthPanel: ReactNode;
   onSignOut: () => void;
   onChangeProfile: (profile: UserProfile) => void;
 };
@@ -18,6 +20,7 @@ export function ProfilScreen({
   party,
   profile,
   firebaseUser,
+  googleAuthPanel,
   onSignOut,
   onChangeProfile,
 }: ProfilScreenProps) {
@@ -49,6 +52,14 @@ export function ProfilScreen({
         </Text>
         <Text style={styles.profileName}>{profile.name || 'Bez jména'}</Text>
         <Text style={styles.profileMeta}>{party.name} · aktivní člen · 42 akcí</Text>
+        <View style={styles.connectionRow}>
+          <Text style={styles.connectionPill}>{firebaseUser ? 'Přihlášeno' : 'Bez přihlášení'}</Text>
+          <Text style={styles.connectionLabel}>
+            {firebaseUser
+              ? firebaseUser.email || firebaseUser.displayName
+              : 'Google účet zatím není propojený'}
+          </Text>
+        </View>
         <View style={styles.profileStats}>
           <View style={styles.profileStat}>
             <Text style={styles.profileStatValue}>42</Text>
@@ -63,10 +74,9 @@ export function ProfilScreen({
             <Text style={styles.profileStatLabel}>km</Text>
           </View>
         </View>
-        <Text style={styles.profileSync}>
-          {firebaseUser ? `Přihlášený Google účet: ${firebaseUser.displayName}` : 'Bez Google přihlášení'}
-        </Text>
       </View>
+
+      {!firebaseUser ? googleAuthPanel : null}
 
       <View style={styles.formCard}>
         <Text style={styles.formTitle}>Upravit profil</Text>
@@ -111,7 +121,15 @@ export function ProfilScreen({
 
       <View style={styles.cardList}>
         {firebaseUser ? (
-          <Pressable style={styles.rowCard} onPress={onSignOut}>
+          <Pressable
+            style={styles.rowCard}
+            onPress={() => {
+              Alert.alert('Odhlásit Google účet?', 'Zůstaneš v aplikaci, ale přijdeš o propojení se synchronizací.', [
+                { text: 'Zrušit', style: 'cancel' },
+                { text: 'Odhlásit', style: 'destructive', onPress: onSignOut },
+              ]);
+            }}
+          >
             <Text style={styles.cardText}>Odhlásit Google účet</Text>
             <Text style={styles.cardMeta}>otevřít</Text>
           </Pressable>
@@ -123,7 +141,7 @@ export function ProfilScreen({
           <Text style={styles.cardText}>Upozornění</Text>
           <Text style={styles.cardMeta}>{profile.notificationsEnabled ? 'zapnuto' : 'vypnuto'}</Text>
         </Pressable>
-        {['Pozvat kamaráda', 'Nastavení party', 'Odhlásit se'].map((item) => (
+        {['Pozvat kamaráda', 'Nastavení party'].map((item) => (
           <View key={item} style={styles.rowCard}>
             <Text style={styles.cardText}>{item}</Text>
             <Text style={styles.cardMeta}>otevřít</Text>
@@ -175,6 +193,27 @@ const styles = StyleSheet.create({
     fontWeight: '700',
     textAlign: 'center',
   },
+  connectionRow: {
+    alignItems: 'center',
+    gap: 6,
+    marginTop: 4,
+  },
+  connectionPill: {
+    backgroundColor: '#DCFCE7',
+    borderRadius: 6,
+    color: '#166534',
+    fontSize: 12,
+    fontWeight: '900',
+    overflow: 'hidden',
+    paddingHorizontal: 8,
+    paddingVertical: 4,
+  },
+  connectionLabel: {
+    color: '#D1D5DB',
+    fontSize: 12,
+    fontWeight: '700',
+    textAlign: 'center',
+  },
   profileStats: {
     flexDirection: 'row',
     gap: 8,
@@ -197,13 +236,6 @@ const styles = StyleSheet.create({
     color: '#D1D5DB',
     fontSize: 12,
     fontWeight: '800',
-  },
-  profileSync: {
-    color: '#D1D5DB',
-    fontSize: 12,
-    fontWeight: '700',
-    marginTop: 4,
-    textAlign: 'center',
   },
   formCard: {
     backgroundColor: '#FFFFFF',

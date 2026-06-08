@@ -1,6 +1,6 @@
 import { StatusBar } from 'expo-status-bar';
 import { MaterialCommunityIcons } from '@expo/vector-icons';
-import { useEffect, useMemo, useState } from 'react';
+import { useEffect, useMemo, useState, type ReactNode } from 'react';
 import {
   Platform,
   Pressable,
@@ -12,8 +12,7 @@ import {
   View,
   StatusBar as NativeStatusBar,
 } from 'react-native';
-import * as WebBrowser from 'expo-web-browser';
-import * as Google from 'expo-auth-session/providers/google';
+import { GoogleSignin, type SignInResponse } from '@react-native-google-signin/google-signin';
 import { GoogleAuthProvider, onAuthStateChanged, signInWithCredential, signOut } from 'firebase/auth';
 import { ActivityPanel } from './src/components/ActivityPanel';
 import { AppMenu } from './src/components/AppMenu';
@@ -31,11 +30,8 @@ import { ActivityKey, ActivityVote, PartyState, PivoState, SectionKey, UserProfi
 import {
   firebaseAuth,
   firebaseEnabled,
-  googleAndroidClientId,
   googleWebClientId,
 } from './src/backend/firebase';
-
-WebBrowser.maybeCompleteAuthSession();
 
 const sectionKeys: SectionKey[] = ['obed', 'pivo', 'kolo', 'kronika', 'zpravy', 'profil', 'party'];
 const defaultProfile: UserProfile = {
@@ -96,10 +92,11 @@ export default function App() {
   const [selectedSection, setSelectedSection] = useState<SectionKey>('pivo');
   const [menuOpen, setMenuOpen] = useState(false);
   const [storageReady, setStorageReady] = useState(false);
+  const [authGateDismissed, setAuthGateDismissed] = useState(false);
   const [profile, setProfile] = useState<UserProfile>(defaultProfile);
   const [party, setParty] = useState<PartyState>(defaultParty);
   const [firebaseUser, setFirebaseUser] = useState<null | { uid: string; displayName: string; email: string | null; photoURL: string | null }>(null);
-  const googleClientIdReady = Platform.OS === 'android' ? !!googleAndroidClientId : !!googleWebClientId;
+  const googleClientIdReady = !!googleWebClientId;
 
   useEffect(() => {
     let mounted = true;
@@ -160,6 +157,30 @@ export default function App() {
   }, [firebaseUser, party, storageReady]);
 
   useEffect(() => {
+    if (!storageReady || !firebaseUser) {
+      return;
+    }
+
+    if (profile.name !== defaultProfile.name) {
+      return;
+    }
+
+    const name = firebaseUser.displayName.trim();
+    if (!name) {
+      return;
+    }
+
+    setProfile((current) =>
+      current.name === defaultProfile.name
+        ? normalizeProfile({
+            ...current,
+            name,
+          })
+        : current,
+    );
+  }, [firebaseUser, profile.name, storageReady]);
+
+  useEffect(() => {
     if (!storageReady) {
       return;
     }
@@ -196,6 +217,16 @@ export default function App() {
   );
 
   const activeActivity = activityMeta[selectedActivity];
+  const showAuthGate = storageReady && firebaseEnabled && !firebaseUser && !authGateDismissed;
+
+  if (showAuthGate) {
+    return (
+      <AuthGateScreen
+        signInCard={<GoogleAuthCard enabled={firebaseEnabled && googleClientIdReady && !firebaseUser} />}
+        onContinue={() => setAuthGateDismissed(true)}
+      />
+    );
+  }
 
   return (
     <SafeAreaView style={styles.safeArea}>
@@ -255,9 +286,12 @@ export default function App() {
               party={party}
               profile={profile}
               firebaseUser={firebaseUser}
+              googleAuthPanel={<GoogleAuthCard enabled={firebaseEnabled && googleClientIdReady && !firebaseUser} />}
               onSignOut={() => {
                 if (firebaseAuth) {
+                  void GoogleSignin.signOut();
                   void signOut(firebaseAuth);
+                  setAuthGateDismissed(false);
                 }
               }}
               onChangeProfile={setProfile}
@@ -272,8 +306,6 @@ export default function App() {
             />
           )}
         </ScrollView>
-
-        <GoogleAuthBanner enabled={firebaseEnabled && googleClientIdReady && !firebaseUser} />
 
         {menuOpen && (
           <AppMenu
@@ -312,41 +344,38 @@ export default function App() {
   );
 }
 
-function GoogleAuthBanner({ enabled }: { enabled: boolean }) {
-  if (!enabled) {
-    return null;
-  }
-
-  if (Platform.OS === 'android') {
-    return <GoogleAuthBannerAndroid />;
-  }
-
-  return <GoogleAuthBannerWeb />;
-}
-
-function GoogleAuthBannerAndroid() {
-  const [googleRequest, googleResponse, promptGoogleSignIn] = Google.useIdTokenAuthRequest({
-    androidClientId: googleAndroidClientId as string,
-  });
-
+function GoogleAuthCard({ enabled }: { enabled: boolean }) {
   useEffect(() => {
-    if (!firebaseAuth || !googleResponse || googleResponse.type !== 'success') {
+    if (!googleWebClientId) {
       return;
     }
 
-    const idToken = googleResponse.params?.id_token;
-    if (!idToken) {
-      return;
-    }
-
-    signInWithCredential(firebaseAuth, GoogleAuthProvider.credential(idToken)).catch((error) => {
-      console.error('Google sign-in failed', error);
+    GoogleSignin.configure({
+      webClientId: googleWebClientId,
     });
-  }, [googleResponse]);
+  }, []);
 
-  if (!googleRequest) {
+  if (!enabled || Platform.OS !== 'android') {
     return null;
   }
+
+  const handleGoogleSignIn = async () => {
+    if (!firebaseAuth) {
+      return;
+    }
+
+    try {
+      await GoogleSignin.hasPlayServices({ showPlayServicesUpdateDialog: true });
+      const response: SignInResponse = await GoogleSignin.signIn();
+      if (response.type !== 'success' || !response.data.idToken) {
+        return;
+      }
+
+      await signInWithCredential(firebaseAuth, GoogleAuthProvider.credential(response.data.idToken));
+    } catch (error) {
+      console.error('Google sign-in failed', error);
+    }
+  };
 
   return (
     <View style={styles.authBanner}>
@@ -354,11 +383,7 @@ function GoogleAuthBannerAndroid() {
         <Text style={styles.authBannerTitle}>Přihlášení</Text>
         <Text style={styles.authBannerText}>Google účet propojí partu, Pivo a Kroniku mezi telefony.</Text>
       </View>
-      <Pressable
-        disabled={!googleRequest}
-        style={[styles.authButton, !googleRequest && styles.authButtonDisabled]}
-        onPress={() => promptGoogleSignIn()}
-      >
+      <Pressable style={styles.authButton} onPress={handleGoogleSignIn}>
         <MaterialCommunityIcons name="google" size={18} color="#15251F" />
         <Text style={styles.authButtonText}>Google</Text>
       </Pressable>
@@ -366,45 +391,30 @@ function GoogleAuthBannerAndroid() {
   );
 }
 
-function GoogleAuthBannerWeb() {
-  const [googleRequest, googleResponse, promptGoogleSignIn] = Google.useIdTokenAuthRequest({
-    webClientId: googleWebClientId as string,
-  });
-
-  useEffect(() => {
-    if (!firebaseAuth || !googleResponse || googleResponse.type !== 'success') {
-      return;
-    }
-
-    const idToken = googleResponse.params?.id_token;
-    if (!idToken) {
-      return;
-    }
-
-    signInWithCredential(firebaseAuth, GoogleAuthProvider.credential(idToken)).catch((error) => {
-      console.error('Google sign-in failed', error);
-    });
-  }, [googleResponse]);
-
-  if (!googleRequest) {
-    return null;
-  }
-
+function AuthGateScreen({
+  signInCard,
+  onContinue,
+}: {
+  signInCard: ReactNode;
+  onContinue: () => void;
+}) {
   return (
-    <View style={styles.authBanner}>
-      <View style={styles.authBannerCopy}>
-        <Text style={styles.authBannerTitle}>Přihlášení</Text>
-        <Text style={styles.authBannerText}>Google účet propojí partu, Pivo a Kroniku mezi telefony.</Text>
+    <SafeAreaView style={styles.safeArea}>
+      <StatusBar style="dark" />
+      <View style={styles.authGate}>
+        <View style={styles.authGateHero}>
+          <OpkLogo />
+          <Text style={styles.authGateTitle}>Oběd Pivo Kolo</Text>
+          <Text style={styles.authGateText}>
+            Přihlas se přes Google, a party, Pivo a Kronika se propojí mezi telefony.
+          </Text>
+        </View>
+        {signInCard}
+        <Pressable style={styles.authGateContinue} onPress={onContinue}>
+          <Text style={styles.authGateContinueText}>Pokračovat bez přihlášení</Text>
+        </Pressable>
       </View>
-      <Pressable
-        disabled={!googleRequest}
-        style={[styles.authButton, !googleRequest && styles.authButtonDisabled]}
-        onPress={() => promptGoogleSignIn()}
-      >
-        <MaterialCommunityIcons name="google" size={18} color="#15251F" />
-        <Text style={styles.authButtonText}>Google</Text>
-      </Pressable>
-    </View>
+    </SafeAreaView>
   );
 }
 
@@ -1441,6 +1451,41 @@ const styles = StyleSheet.create({
     fontSize: 12,
     fontWeight: '700',
     marginTop: 10,
+  },
+  authGate: {
+    flex: 1,
+    justifyContent: 'center',
+    paddingHorizontal: 18,
+    paddingVertical: 24,
+  },
+  authGateHero: {
+    alignItems: 'center',
+    marginBottom: 18,
+  },
+  authGateTitle: {
+    color: '#111827',
+    fontSize: 26,
+    fontWeight: '900',
+    marginTop: 14,
+    textAlign: 'center',
+  },
+  authGateText: {
+    color: '#4B5563',
+    fontSize: 14,
+    fontWeight: '700',
+    lineHeight: 20,
+    marginTop: 8,
+    textAlign: 'center',
+  },
+  authGateContinue: {
+    alignItems: 'center',
+    marginTop: 12,
+    paddingVertical: 10,
+  },
+  authGateContinueText: {
+    color: '#6B7280',
+    fontSize: 13,
+    fontWeight: '800',
   },
   authBanner: {
     alignItems: 'center',
