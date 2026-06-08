@@ -1,6 +1,7 @@
 import AsyncStorage from '@react-native-async-storage/async-storage';
 
 export const storageKeys = {
+  memories: 'opk:memories',
   pivoState: 'opk:pivoState',
   selectedSection: 'opk:selectedSection',
 } as const;

@@ -21,6 +21,13 @@ export type MemoryItem = {
   text: string;
 };
 
+export type SavedMemory = {
+  id: string;
+  activity: ActivityKey;
+  text: string;
+  createdAt: string;
+};
+
 export type NewsItem = {
   title: string;
   summary: string;
