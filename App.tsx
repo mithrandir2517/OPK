@@ -73,21 +73,21 @@ export default function App() {
     <SafeAreaView style={styles.safeArea}>
       <StatusBar style="dark" />
       <View style={styles.appShell}>
-        <ScrollView contentContainerStyle={styles.screen} showsVerticalScrollIndicator={false}>
-          <View style={styles.header}>
-            <View style={styles.headerLeft}>
-              <OpkLogo />
-              <Pressable style={styles.partyPill} onPress={() => setSelectedSection('party')}>
-                <Text style={styles.partyLabel}>Parta</Text>
-                <Text style={styles.partyName}>Vyškov</Text>
-                <MaterialCommunityIcons name="chevron-down" size={18} color="#6B7280" />
-              </Pressable>
-            </View>
-            <Pressable style={styles.menuButton} onPress={() => setMenuOpen((open) => !open)}>
-              <MaterialCommunityIcons name="menu" size={24} color="#111827" />
+        <View style={styles.header}>
+          <View style={styles.headerLeft}>
+            <OpkLogo />
+            <Pressable style={styles.partyPill} onPress={() => setSelectedSection('party')}>
+              <Text style={styles.partyLabel}>Parta</Text>
+              <Text style={styles.partyName}>Vyškov</Text>
+              <MaterialCommunityIcons name="chevron-down" size={18} color="#6B7280" />
             </Pressable>
           </View>
+          <Pressable style={styles.menuButton} onPress={() => setMenuOpen((open) => !open)}>
+            <MaterialCommunityIcons name="menu" size={24} color="#111827" />
+          </Pressable>
+        </View>
 
+        <ScrollView contentContainerStyle={styles.screen} showsVerticalScrollIndicator={false}>
           {selectedSection === 'pivo' && <PivoScreen accent={activeActivity.accent} />}
           {selectedSection === 'obed' && <ObedScreen accent={activeActivity.accent} />}
           {selectedSection === 'kolo' && <KoloScreen accent={activeActivity.accent} />}
@@ -136,6 +136,15 @@ export default function App() {
 
 function ObedScreen({ accent }: { accent: string }) {
   const restaurantsWithMenu = lunchRestaurants.filter((restaurant) => restaurant.items.length > 0);
+  const [expandedRestaurants, setExpandedRestaurants] = useState<string[]>([]);
+
+  const toggleRestaurant = (restaurantName: string) => {
+    setExpandedRestaurants((current) =>
+      current.includes(restaurantName)
+        ? current.filter((name) => name !== restaurantName)
+        : [...current, restaurantName],
+    );
+  };
 
   return (
     <>
@@ -149,47 +158,59 @@ function ObedScreen({ accent }: { accent: string }) {
       <ActivityPanel title="Oběd" action="Dáme oběd?" accent={accent} icon="silverware-fork-knife">
         <View style={styles.cardList}>
           <Text style={styles.subsectionTitle}>Vyškov · podobně jako na webu</Text>
-          {restaurantsWithMenu.map((restaurant) => (
-            <View key={restaurant.name} style={styles.restaurantCard}>
-              <View style={styles.restaurantHeader}>
-                <Text style={styles.cardTitle}>{restaurant.name}</Text>
-                <View style={styles.chipRow}>
-                  {restaurant.delivery && (
-                    <View style={styles.deliveryChip}>
-                      <MaterialCommunityIcons name="truck-delivery-outline" size={12} color="#0369A1" />
-                      <Text style={styles.deliveryChipText}>Rozvoz</Text>
-                    </View>
-                  )}
-                  <Text style={restaurant.items.length > 0 ? styles.openChip : styles.closedChip}>
-                    {restaurant.items.length > 0 ? 'Menu' : 'Bez menu'}
-                  </Text>
-                </View>
-              </View>
+          {restaurantsWithMenu.map((restaurant) => {
+            const isExpanded = expandedRestaurants.includes(restaurant.name);
 
-              {restaurant.items.length > 0 ? (
-                <View style={styles.menuRows}>
-                  {restaurant.items.map((item, index) => (
-                    <View key={`${restaurant.name}-${index}`} style={styles.menuRow}>
-                      <View style={styles.menuTextGroup}>
-                        <Text style={item.no ? styles.menuNumber : styles.soupLabel}>
-                          {item.no || 'Polévka'}
-                        </Text>
-                        <Text style={styles.menuItemText}>{item.name}</Text>
+            return (
+              <View key={restaurant.name} style={styles.restaurantCard}>
+                <Pressable style={styles.restaurantHeader} onPress={() => toggleRestaurant(restaurant.name)}>
+                  <View style={styles.restaurantTitleGroup}>
+                    <Text style={styles.cardTitle}>{restaurant.name}</Text>
+                    <Text style={styles.cardMeta}>{restaurant.items.length} položek v menu</Text>
+                  </View>
+                  <View style={styles.restaurantHeaderRight}>
+                    <View style={styles.chipRow}>
+                      {restaurant.delivery && (
+                        <View style={styles.deliveryChip}>
+                          <MaterialCommunityIcons name="truck-delivery-outline" size={12} color="#0369A1" />
+                          <Text style={styles.deliveryChipText}>Rozvoz</Text>
+                        </View>
+                      )}
+                      <Text style={styles.openChip}>Menu</Text>
+                    </View>
+                    <MaterialCommunityIcons
+                      name={isExpanded ? 'chevron-up' : 'chevron-down'}
+                      size={24}
+                      color="#6B7280"
+                    />
+                  </View>
+                </Pressable>
+
+                {isExpanded ? (
+                  <View style={styles.menuRows}>
+                    {restaurant.items.map((item, index) => (
+                      <View key={`${restaurant.name}-${index}`} style={styles.menuRow}>
+                        <View style={styles.menuTextGroup}>
+                          <Text style={item.no ? styles.menuNumber : styles.soupLabel}>
+                            {item.no || 'Polévka'}
+                          </Text>
+                          <Text style={styles.menuItemText}>{item.name}</Text>
+                        </View>
+                        {!!item.price && <Text style={styles.menuPrice}>{item.price}</Text>}
                       </View>
-                      {!!item.price && <Text style={styles.menuPrice}>{item.price}</Text>}
-                    </View>
-                  ))}
-                </View>
-              ) : (
-                <Text style={styles.emptyMenuText}>{restaurant.message}</Text>
-              )}
+                    ))}
+                  </View>
+                ) : (
+                  <Text style={styles.collapsedMenuHint}>Klepni pro zobrazení meníčka</Text>
+                )}
 
-              <View style={styles.restaurantActions}>
-                <Text style={styles.voteText}>Hlasovat</Text>
-                <Text style={styles.voteText}>Otevřít na Meníčka.cz</Text>
+                <View style={styles.restaurantActions}>
+                  <Text style={styles.voteText}>Hlasovat</Text>
+                  <Text style={styles.voteText}>Otevřít na Meníčka.cz</Text>
+                </View>
               </View>
-            </View>
-          ))}
+            );
+          })}
         </View>
       </ActivityPanel>
     </>
@@ -412,14 +433,26 @@ const styles = StyleSheet.create({
   screen: {
     gap: 16,
     paddingHorizontal: 18,
-    paddingTop: 14,
+    paddingTop: 16,
     paddingBottom: 112,
   },
   header: {
     alignItems: 'center',
+    backgroundColor: '#F4F1EA',
+    borderBottomColor: '#E6DED3',
+    borderBottomWidth: 1,
+    elevation: 3,
     flexDirection: 'row',
     gap: 16,
     justifyContent: 'space-between',
+    paddingBottom: 10,
+    paddingHorizontal: 18,
+    paddingTop: 10,
+    shadowColor: '#111827',
+    shadowOffset: { width: 0, height: 3 },
+    shadowOpacity: 0.07,
+    shadowRadius: 8,
+    zIndex: 5,
   },
   headerLeft: {
     alignItems: 'center',
@@ -681,8 +714,21 @@ const styles = StyleSheet.create({
     shadowRadius: 5,
   },
   restaurantHeader: {
-    alignItems: 'flex-start',
-    gap: 10,
+    alignItems: 'center',
+    flexDirection: 'row',
+    gap: 12,
+    justifyContent: 'space-between',
+    minHeight: 50,
+  },
+  restaurantTitleGroup: {
+    flex: 1,
+    flexShrink: 1,
+  },
+  restaurantHeaderRight: {
+    alignItems: 'center',
+    flexDirection: 'row',
+    flexShrink: 0,
+    gap: 8,
   },
   chipRow: {
     flexDirection: 'row',
@@ -713,6 +759,12 @@ const styles = StyleSheet.create({
     overflow: 'hidden',
     paddingHorizontal: 7,
     paddingVertical: 4,
+  },
+  collapsedMenuHint: {
+    color: '#6B7280',
+    fontSize: 13,
+    fontWeight: '700',
+    marginTop: 10,
   },
   closedChip: {
     backgroundColor: '#F3F4F6',

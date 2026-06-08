@@ -15,12 +15,9 @@ export function ActivityPanel({ title, action, accent, icon, children }: Activit
   return (
     <View style={[styles.detailPanel, { borderTopColor: accent }]}>
       <View style={styles.sectionHeader}>
-        <View>
-          <Text style={styles.label}>Aktivita</Text>
-          <View style={styles.detailTitleRow}>
-            <MaterialCommunityIcons name={icon} size={25} color={accent} />
-            <Text style={styles.detailTitle}>{title}</Text>
-          </View>
+        <View style={styles.detailTitleRow}>
+          <MaterialCommunityIcons name={icon} size={25} color={accent} />
+          <Text style={styles.detailTitle}>{title}</Text>
         </View>
         <Pressable style={[styles.smallButton, { backgroundColor: accent }]}>
           <MaterialCommunityIcons name="plus" size={18} color="#FFFFFF" />
@@ -53,13 +50,6 @@ const styles = StyleSheet.create({
     gap: 12,
     justifyContent: 'space-between',
   },
-  label: {
-    color: '#6B7280',
-    fontSize: 12,
-    fontWeight: '800',
-    letterSpacing: 0,
-    textTransform: 'uppercase',
-  },
   detailTitle: {
     color: '#111827',
     fontSize: 24,
@@ -68,8 +58,8 @@ const styles = StyleSheet.create({
   detailTitleRow: {
     alignItems: 'center',
     flexDirection: 'row',
+    flexShrink: 1,
     gap: 8,
-    marginTop: 2,
   },
   smallButton: {
     alignItems: 'center',
