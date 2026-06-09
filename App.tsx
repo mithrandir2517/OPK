@@ -47,6 +47,8 @@ const defaultParty: PartyState = {
   inviteCode: 'OPK-VYSKOV',
 };
 
+type PartySyncMode = 'ready' | 'joining';
+
 function isSectionKey(value: unknown): value is SectionKey {
   return typeof value === 'string' && sectionKeys.includes(value as SectionKey);
 }
@@ -88,11 +90,27 @@ function normalizeParty(value: Partial<PartyState> | null): PartyState {
   };
 }
 
+function normalizePartyCode(value: string) {
+  return value
+    .trim()
+    .toUpperCase()
+    .replace(/[^A-Z0-9-]/g, '-')
+    .replace(/-+/g, '-')
+    .replace(/^-|-$/g, '');
+}
+
+function makePartyCode(baseName: string, city: string) {
+  const base = normalizePartyCode(`${baseName} ${city}`.slice(0, 16)) || 'OPK';
+  const suffix = Math.floor(Math.random() * 900 + 100);
+  return `${base}-${suffix}`;
+}
+
 export default function App() {
   const [selectedSection, setSelectedSection] = useState<SectionKey>('pivo');
   const [menuOpen, setMenuOpen] = useState(false);
   const [storageReady, setStorageReady] = useState(false);
   const [authGateDismissed, setAuthGateDismissed] = useState(false);
+  const [partySyncMode, setPartySyncMode] = useState<PartySyncMode>('ready');
   const [profile, setProfile] = useState<UserProfile>(defaultProfile);
   const [party, setParty] = useState<PartyState>(defaultParty);
   const [firebaseUser, setFirebaseUser] = useState<null | { uid: string; displayName: string; email: string | null; photoURL: string | null }>(null);
@@ -151,22 +169,20 @@ export default function App() {
   }, [party, profile, selectedSection, storageReady]);
 
   useEffect(() => {
-    if (storageReady && firebaseEnabled && firebaseUser) {
+    if (storageReady && firebaseEnabled && firebaseUser && partySyncMode === 'ready') {
       void savePartySync(party);
     }
-  }, [firebaseUser, party, storageReady]);
+  }, [firebaseUser, party, partySyncMode, storageReady]);
 
   useEffect(() => {
     if (!storageReady || !firebaseUser) {
       return;
     }
 
-    if (profile.name !== defaultProfile.name) {
-      return;
-    }
+    const fallbackName = firebaseUser.displayName.trim();
+    const preferredName = profile.name.trim() !== defaultProfile.name ? profile.name.trim() : fallbackName;
 
-    const name = firebaseUser.displayName.trim();
-    if (!name) {
+    if (!preferredName) {
       return;
     }
 
@@ -174,9 +190,31 @@ export default function App() {
       current.name === defaultProfile.name
         ? normalizeProfile({
             ...current,
-            name,
+            name: preferredName,
           })
         : current,
+    );
+  }, [firebaseUser, profile.name, storageReady]);
+
+  useEffect(() => {
+    if (!storageReady || !firebaseUser) {
+      return;
+    }
+
+    const fallbackName = firebaseUser.displayName.trim();
+    const preferredName = profile.name.trim() !== defaultProfile.name ? profile.name.trim() : fallbackName;
+
+    if (!preferredName) {
+      return;
+    }
+
+    setParty((current) =>
+      current.members.includes(preferredName)
+        ? current
+        : {
+            ...current,
+            members: [...current.members, preferredName],
+          },
     );
   }, [firebaseUser, profile.name, storageReady]);
 
@@ -203,6 +241,7 @@ export default function App() {
 
         return remoteParty;
       });
+      setPartySyncMode('ready');
     });
 
     return unsubscribe;
@@ -218,6 +257,31 @@ export default function App() {
 
   const activeActivity = activityMeta[selectedActivity];
   const showAuthGate = storageReady && firebaseEnabled && !firebaseUser && !authGateDismissed;
+
+  const handleCreateParty = () => {
+    const creatorName =
+      profile.name.trim() !== defaultProfile.name ? profile.name.trim() : firebaseUser?.displayName?.trim() || 'Marek';
+
+    setParty((current) => ({
+      ...current,
+      inviteCode: makePartyCode(current.name, current.city),
+      members: [creatorName],
+    }));
+    setPartySyncMode('ready');
+  };
+
+  const handleJoinParty = (inviteCode: string) => {
+    const normalized = normalizePartyCode(inviteCode);
+    if (!normalized) {
+      return;
+    }
+
+    setPartySyncMode('joining');
+    setParty((current) => ({
+      ...current,
+      inviteCode: normalized,
+    }));
+  };
 
   if (showAuthGate) {
     return (
@@ -303,6 +367,9 @@ export default function App() {
               party={party}
               canSync={firebaseEnabled && !!firebaseUser}
               onChangeParty={setParty}
+              onCreateParty={handleCreateParty}
+              onJoinParty={handleJoinParty}
+              isJoining={partySyncMode === 'joining'}
             />
           )}
         </ScrollView>

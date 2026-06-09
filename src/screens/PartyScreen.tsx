@@ -8,10 +8,22 @@ type PartyScreenProps = {
   party: PartyState;
   canSync: boolean;
   onChangeParty: (party: PartyState) => void;
+  onCreateParty: () => void;
+  onJoinParty: (inviteCode: string) => void;
+  isJoining: boolean;
 };
 
-export function PartyScreen({ onBack, party, canSync, onChangeParty }: PartyScreenProps) {
+export function PartyScreen({
+  onBack,
+  party,
+  canSync,
+  onChangeParty,
+  onCreateParty,
+  onJoinParty,
+  isJoining,
+}: PartyScreenProps) {
   const [newMember, setNewMember] = useState('');
+  const [inviteCode, setInviteCode] = useState('');
 
   const updateParty = (nextParty: Partial<PartyState>) => {
     onChangeParty({ ...party, ...nextParty });
@@ -100,6 +112,40 @@ export function PartyScreen({ onBack, party, canSync, onChangeParty }: PartyScre
             </Pressable>
           </View>
         </View>
+      </View>
+
+      <View style={styles.formCard}>
+        <Text style={styles.formTitle}>Sdílení party</Text>
+        <Text style={styles.cardText}>
+          Vytvoř nový kód pro vlastní partu, nebo se připoj přes kód od kamaráda.
+        </Text>
+        <View style={styles.formField}>
+          <Text style={styles.inputLabel}>Kód party</Text>
+          <TextInput
+            value={inviteCode}
+            onChangeText={setInviteCode}
+            placeholder="OPK-VYSKOV-123"
+            placeholderTextColor="#9CA3AF"
+            autoCapitalize="characters"
+            style={styles.textInput}
+          />
+        </View>
+        <View style={styles.shareActionRow}>
+          <Pressable
+            style={[styles.shareButton, styles.shareButtonPrimary]}
+            onPress={() => onJoinParty(inviteCode)}
+          >
+            <Text style={styles.shareButtonPrimaryText}>{isJoining ? 'Připojuji…' : 'Připojit se'}</Text>
+          </Pressable>
+          <Pressable style={styles.shareButton} onPress={onCreateParty}>
+            <Text style={styles.shareButtonText}>Vytvořit nový kód</Text>
+          </Pressable>
+        </View>
+        <Text style={styles.syncStatus}>
+          {isJoining
+            ? 'Čekám na data z party podle zadaného kódu.'
+            : 'Nová party vytvoří nový kód a začne se synchronizovat přes Firebase.'}
+        </Text>
       </View>
 
       <View style={styles.inviteCard}>
@@ -245,6 +291,42 @@ const styles = StyleSheet.create({
     fontSize: 14,
     fontWeight: '900',
   },
+  shareActionRow: {
+    flexDirection: 'row',
+    gap: 8,
+  },
+  shareButton: {
+    alignItems: 'center',
+    backgroundColor: '#FBFAF8',
+    borderColor: '#E1DBD2',
+    borderRadius: 8,
+    borderWidth: 1,
+    flex: 1,
+    justifyContent: 'center',
+    minHeight: 46,
+    paddingHorizontal: 12,
+  },
+  shareButtonPrimary: {
+    backgroundColor: '#15251F',
+    borderColor: '#15251F',
+  },
+  shareButtonText: {
+    color: '#374151',
+    fontSize: 14,
+    fontWeight: '900',
+  },
+  shareButtonPrimaryText: {
+    color: '#F8B84E',
+    fontSize: 14,
+    fontWeight: '900',
+  },
+  syncStatus: {
+    color: '#6B7280',
+    fontSize: 12,
+    fontWeight: '700',
+    lineHeight: 18,
+    marginTop: 2,
+  },
   inviteCard: {
     alignItems: 'center',
     backgroundColor: '#15251F',
@@ -263,12 +345,6 @@ const styles = StyleSheet.create({
     color: '#F8B84E',
     fontSize: 13,
     fontWeight: '900',
-  },
-  syncStatus: {
-    color: '#D1D5DB',
-    fontSize: 12,
-    fontWeight: '700',
-    marginTop: 4,
   },
   cardList: {
     gap: 10,
