@@ -26,13 +26,15 @@ import { ZpravyScreen } from './src/screens/ZpravyScreen';
 import {
   fetchPartySync,
   savePartySync,
+  savePartyRefSync,
   savePivoSync,
+  subscribeUserPartyRefs,
   subscribePartySync,
   subscribePivoSync,
 } from './src/backend/opkSync';
 import { saveActivityVoteSync, subscribeActivityVotesSync } from './src/backend/pollSync';
 import { loadJson, saveJson, storageKeys } from './src/storage/localStorage';
-import { ActivityKey, ActivityVote, PartyMember, PartyState, PivoState, SectionKey, UserProfile } from './src/types';
+import { ActivityKey, ActivityVote, PartyMember, PartyRef, PartyState, PivoState, SectionKey, UserProfile } from './src/types';
 import {
   firebaseAuth,
   firebaseEnabled,
@@ -214,9 +216,9 @@ export default function App() {
   const [partySyncMode, setPartySyncMode] = useState<PartySyncMode>('ready');
   const [joinTargetCode, setJoinTargetCode] = useState<string | null>(null);
   const [partySyncError, setPartySyncError] = useState<string | null>(null);
-  const [partySyncDebug, setPartySyncDebug] = useState<string | null>(null);
   const [profile, setProfile] = useState<UserProfile>(defaultProfile);
   const [party, setParty] = useState<PartyState>(defaultParty);
+  const [partyRefs, setPartyRefs] = useState<PartyRef[]>([]);
   const [firebaseUser, setFirebaseUser] = useState<null | { uid: string; displayName: string; email: string | null; photoURL: string | null }>(null);
   const googleClientIdReady = !!googleWebClientId;
 
@@ -279,7 +281,14 @@ export default function App() {
       void savePartySync(party).catch((error: unknown) => {
         setPartySyncError(error instanceof Error ? error.message : 'Nepovedlo se uložit party do Firebase.');
       });
-      setPartySyncDebug(`Uloženo: ${party.name} / ${party.city} / ${party.inviteCode}`);
+    }
+  }, [firebaseUser, party, partySyncMode, storageReady]);
+
+  useEffect(() => {
+    if (storageReady && firebaseEnabled && firebaseUser && partySyncMode === 'ready') {
+      void savePartyRefSync(firebaseUser.uid, party).catch((error: unknown) => {
+        setPartySyncError(error instanceof Error ? error.message : 'Nepovedlo se uložit přehled party.');
+      });
     }
   }, [firebaseUser, party, partySyncMode, storageReady]);
 
@@ -353,7 +362,6 @@ export default function App() {
       });
       setPartySyncMode('ready');
       setPartySyncError(null);
-      setPartySyncDebug(`Načteno: ${mergedRemoteParty.name} / ${mergedRemoteParty.city} / ${mergedRemoteParty.inviteCode}`);
       },
       (error) => {
         setPartySyncError(error.message);
@@ -385,13 +393,12 @@ export default function App() {
           return;
         }
 
-      const mergedRemoteParty = mergeCurrentMember(remoteParty, firebaseUser, profile);
+        const mergedRemoteParty = mergeCurrentMember(remoteParty, firebaseUser, profile);
 
-      setParty(mergedRemoteParty);
-      setPartySyncMode('ready');
-      setJoinTargetCode(null);
-      setPartySyncError(null);
-      setPartySyncDebug(`Načteno: ${mergedRemoteParty.name} / ${mergedRemoteParty.city} / ${mergedRemoteParty.inviteCode}`);
+        setParty(mergedRemoteParty);
+        setPartySyncMode('ready');
+        setJoinTargetCode(null);
+        setPartySyncError(null);
       },
       (error) => {
         if (!mounted) {
@@ -413,7 +420,6 @@ export default function App() {
         setPartySyncMode('ready');
         setJoinTargetCode(null);
         setPartySyncError(null);
-        setPartySyncDebug(`Načteno: ${remoteParty.name} / ${remoteParty.city} / ${remoteParty.inviteCode}`);
       })
       .catch((error: unknown) => {
         if (!mounted) {
@@ -430,6 +436,15 @@ export default function App() {
       unsubscribe();
     };
   }, [firebaseUser, joinTargetCode, storageReady]);
+
+  useEffect(() => {
+    if (!firebaseUser) {
+      setPartyRefs([]);
+      return;
+    }
+
+    return subscribeUserPartyRefs(firebaseUser.uid, setPartyRefs);
+  }, [firebaseUser]);
 
   const selectedActivity = useMemo<ActivityKey>(
     () =>
@@ -479,8 +494,29 @@ export default function App() {
 
     setJoinTargetCode(normalized);
     setPartySyncError(null);
-    setPartySyncDebug(null);
     setPartySyncMode('joining');
+  };
+
+  const handleSelectParty = (inviteCode: string) => {
+    if (!inviteCode || inviteCode === party.inviteCode) {
+      return;
+    }
+
+    setPartySyncError(null);
+    setJoinTargetCode(null);
+    setPartySyncMode('ready');
+    void fetchPartySync(inviteCode)
+      .then((selectedParty) => {
+        if (!selectedParty) {
+          setPartySyncError(`Party ${inviteCode} se ve Firebase nenašla.`);
+          return;
+        }
+
+        setParty(selectedParty);
+      })
+      .catch((error: unknown) => {
+        setPartySyncError(error instanceof Error ? error.message : 'Nepovedlo se načíst party z Firebase.');
+      });
   };
 
   if (showAuthGate) {
@@ -565,10 +601,12 @@ export default function App() {
             <PartyScreen
               onBack={() => setSelectedSection(selectedActivity)}
               party={party}
+              partyRefs={partyRefs}
               canSync={firebaseEnabled && !!firebaseUser}
               onChangeParty={setParty}
               onCreateParty={handleCreateParty}
               onJoinParty={handleJoinParty}
+              onSelectParty={handleSelectParty}
               isJoining={partySyncMode === 'joining'}
               syncError={partySyncError}
               joinTargetCode={joinTargetCode}

@@ -1,15 +1,17 @@
 import { useState } from 'react';
 import { Pressable, StyleSheet, Text, TextInput, View } from 'react-native';
 import { BackToOpk } from '../components/BackToOpk';
-import { PartyMember, PartyState } from '../types';
+import { PartyMember, PartyRef, PartyState } from '../types';
 
 type PartyScreenProps = {
   onBack: () => void;
   party: PartyState;
+  partyRefs: PartyRef[];
   canSync: boolean;
   onChangeParty: (party: PartyState) => void;
   onCreateParty: () => void;
   onJoinParty: (inviteCode: string) => void;
+  onSelectParty: (inviteCode: string) => void;
   isJoining: boolean;
   syncError: string | null;
   joinTargetCode: string | null;
@@ -18,10 +20,12 @@ type PartyScreenProps = {
 export function PartyScreen({
   onBack,
   party,
+  partyRefs,
   canSync,
   onChangeParty,
   onCreateParty,
   onJoinParty,
+  onSelectParty,
   isJoining,
   syncError,
   joinTargetCode,
@@ -90,6 +94,39 @@ export function PartyScreen({
             </Pressable>
           ))}
         </View>
+      </View>
+
+      <View style={styles.listCard}>
+        <View style={styles.listHeader}>
+          <Text style={styles.formTitle}>Moje party</Text>
+          <Text style={styles.listCount}>{partyRefs.length}</Text>
+        </View>
+        {partyRefs.length > 0 ? (
+          <View style={styles.partyList}>
+            {partyRefs.map((partyRef) => {
+              const isActive = partyRef.inviteCode === party.inviteCode;
+
+              return (
+                <Pressable
+                  key={partyRef.inviteCode}
+                  style={[styles.partyRow, isActive && styles.partyRowActive]}
+                  onPress={() => onSelectParty(partyRef.inviteCode)}
+                >
+                  <View style={styles.partyRowCopy}>
+                    <Text style={styles.partyRowTitle}>{partyRef.name || 'Bez názvu'}</Text>
+                    <Text style={styles.partyRowMeta}>
+                      {partyRef.city || 'bez města'} · {partyRef.memberCount} členů
+                    </Text>
+                    <Text style={styles.partyRowCode}>{partyRef.inviteCode}</Text>
+                  </View>
+                  <Text style={styles.partyRowAction}>{isActive ? 'Aktivní' : 'Otevřít'}</Text>
+                </Pressable>
+              );
+            })}
+          </View>
+        ) : (
+          <Text style={styles.syncStatus}>Zatím žádné sdílené party.</Text>
+        )}
       </View>
 
       <View style={styles.formCard}>
@@ -319,6 +356,74 @@ const styles = StyleSheet.create({
     color: '#15251F',
     fontSize: 14,
     fontWeight: '900',
+  },
+  listCard: {
+    backgroundColor: '#FFFFFF',
+    borderColor: '#E1DBD2',
+    borderRadius: 8,
+    borderWidth: 1,
+    gap: 12,
+    padding: 14,
+  },
+  listHeader: {
+    alignItems: 'center',
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+  },
+  listCount: {
+    backgroundColor: '#F4F1EA',
+    borderRadius: 999,
+    color: '#374151',
+    fontSize: 12,
+    fontWeight: '900',
+    minWidth: 28,
+    paddingHorizontal: 8,
+    paddingVertical: 4,
+    textAlign: 'center',
+  },
+  partyList: {
+    gap: 8,
+  },
+  partyRow: {
+    alignItems: 'center',
+    backgroundColor: '#FBFAF8',
+    borderColor: '#E1DBD2',
+    borderRadius: 8,
+    borderWidth: 1,
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    padding: 12,
+  },
+  partyRowActive: {
+    backgroundColor: '#F5F9F7',
+    borderColor: '#9BC1AD',
+  },
+  partyRowCopy: {
+    flex: 1,
+    minWidth: 0,
+  },
+  partyRowTitle: {
+    color: '#111827',
+    fontSize: 15,
+    fontWeight: '900',
+  },
+  partyRowMeta: {
+    color: '#6B7280',
+    fontSize: 12,
+    fontWeight: '700',
+    marginTop: 2,
+  },
+  partyRowCode: {
+    color: '#9CA3AF',
+    fontSize: 11,
+    fontWeight: '800',
+    marginTop: 3,
+  },
+  partyRowAction: {
+    color: '#15251F',
+    fontSize: 12,
+    fontWeight: '900',
+    marginLeft: 12,
   },
   shareButton: {
     alignItems: 'center',

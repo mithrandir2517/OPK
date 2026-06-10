@@ -42,6 +42,14 @@ export type PartyState = {
   inviteCode: string;
 };
 
+export type PartyRef = {
+  inviteCode: string;
+  name: string;
+  city: string;
+  memberCount: number;
+  updatedAt: string;
+};
+
 export type PartyMember = {
   uid: string;
   displayName: string;

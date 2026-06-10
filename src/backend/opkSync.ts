@@ -13,7 +13,7 @@ import {
   updateDoc,
 } from 'firebase/firestore';
 import { firestore, firebaseEnabled } from './firebase';
-import { PartyMember, PartyState, PivoState, SavedMemory } from '../types';
+import { PartyMember, PartyRef, PartyState, PivoState, SavedMemory } from '../types';
 
 function normalizePartyMembers(value: unknown): PartyMember[] {
   if (!Array.isArray(value)) {
@@ -82,6 +82,26 @@ function mapPartyData(inviteCode: string, data: Record<string, unknown>): PartyS
             { uid: 'legacy-pavel', displayName: 'Pavel', email: null, source: 'legacy' },
           ],
     inviteCode: typeof data.inviteCode === 'string' && data.inviteCode.trim() ? data.inviteCode : inviteCode,
+  };
+}
+
+function mapPartyRefData(data: Record<string, unknown>): PartyRef | null {
+  if (
+    typeof data.inviteCode !== 'string' ||
+    typeof data.name !== 'string' ||
+    typeof data.city !== 'string' ||
+    typeof data.memberCount !== 'number' ||
+    typeof data.updatedAt !== 'string'
+  ) {
+    return null;
+  }
+
+  return {
+    inviteCode: data.inviteCode,
+    name: data.name,
+    city: data.city,
+    memberCount: data.memberCount,
+    updatedAt: data.updatedAt,
   };
 }
 
@@ -169,6 +189,40 @@ export async function savePartySync(party: PartyState) {
       updatedAt: serverTimestamp(),
     });
   }
+}
+
+export function subscribeUserPartyRefs(uid: string, onChange: (partyRefs: PartyRef[]) => void) {
+  if (!firebaseEnabled || !firestore) {
+    return () => {};
+  }
+
+  const refsQuery = query(collection(firestore, 'users', uid, 'partyRefs'), orderBy('updatedAt', 'desc'));
+
+  return onSnapshot(refsQuery, (snapshot) => {
+    const nextPartyRefs = snapshot.docs
+      .map((document) => mapPartyRefData(document.data() as Record<string, unknown>))
+      .filter((item): item is PartyRef => item !== null);
+
+    onChange(nextPartyRefs);
+  });
+}
+
+export async function savePartyRefSync(uid: string, party: PartyState) {
+  if (!firebaseEnabled || !firestore) {
+    return;
+  }
+
+  await setDoc(
+    doc(firestore, 'users', uid, 'partyRefs', party.inviteCode),
+    {
+      inviteCode: party.inviteCode,
+      name: party.name,
+      city: party.city,
+      memberCount: party.members.length,
+      updatedAt: new Date().toISOString(),
+    },
+    { merge: true },
+  );
 }
 
 export function subscribePivoSync(inviteCode: string, onChange: (pivoState: PivoState) => void) {
