@@ -13,7 +13,6 @@ type PartyScreenProps = {
   isJoining: boolean;
   syncError: string | null;
   joinTargetCode: string | null;
-  syncDebug: string | null;
 };
 
 export function PartyScreen({
@@ -26,7 +25,6 @@ export function PartyScreen({
   isJoining,
   syncError,
   joinTargetCode,
-  syncDebug,
 }: PartyScreenProps) {
   const [newMember, setNewMember] = useState('');
   const [inviteCode, setInviteCode] = useState('');
@@ -72,7 +70,7 @@ export function PartyScreen({
       </View>
 
       <View style={styles.activePartyCard}>
-        <Text style={styles.label}>Vybraná parta</Text>
+        <Text style={styles.label}>Aktuální party</Text>
         <Text style={styles.activePartyTitle}>{isJoining ? 'Načítám partu…' : party.name || 'Bez názvu'}</Text>
         <Text style={styles.darkStatusText}>
           {isJoining ? 'Čekám na sdílená data z Firebase.' : `${party.members.length} členové · ${party.city || 'bez města'}`}
@@ -134,10 +132,16 @@ export function PartyScreen({
       </View>
 
       <View style={styles.formCard}>
-        <Text style={styles.formTitle}>Společná party</Text>
-        <Text style={styles.cardText}>
-          Vytvoř nový kód pro vlastní partu, nebo se připoj přes kód od kamaráda.
-        </Text>
+        <Text style={styles.formTitle}>Nová party</Text>
+        <Text style={styles.cardText}>Založí novou sdílenou partu z aktuálního názvu a města.</Text>
+        <Pressable style={[styles.shareButton, styles.shareButtonPrimary]} onPress={onCreateParty}>
+          <Text style={styles.shareButtonPrimaryText}>Vytvořit novou party</Text>
+        </Pressable>
+      </View>
+
+      <View style={styles.formCard}>
+        <Text style={styles.formTitle}>Připojit se</Text>
+        <Text style={styles.cardText}>Zadej kód od kamaráda a načti jeho partu na tento telefon.</Text>
         <View style={styles.formField}>
           <Text style={styles.inputLabel}>Kód party</Text>
           <TextInput
@@ -149,35 +153,16 @@ export function PartyScreen({
             style={styles.textInput}
           />
         </View>
-        <View style={styles.shareActionRow}>
-          <Pressable
-            style={[styles.shareButton, styles.shareButtonPrimary]}
-            onPress={() => onJoinParty(inviteCode)}
-          >
-            <Text style={styles.shareButtonPrimaryText}>{isJoining ? 'Připojuji…' : 'Připojit se'}</Text>
-          </Pressable>
-          <Pressable style={styles.shareButton} onPress={onCreateParty}>
-            <Text style={styles.shareButtonText}>Vytvořit kód</Text>
-          </Pressable>
-        </View>
+        <Pressable style={[styles.shareButton, styles.shareButtonPrimary]} onPress={() => onJoinParty(inviteCode)}>
+          <Text style={styles.shareButtonPrimaryText}>{isJoining ? 'Připojuji…' : 'Připojit se'}</Text>
+        </Pressable>
         <Text style={styles.syncStatus}>
           {syncError
             ? `Firebase chyba: ${syncError}`
-            : isJoining
-            ? 'Načítám data podle zadaného kódu. Pokud to trvá dlouho, party zatím ve Firebase neexistuje.'
-            : 'Vytvoření kódu založí novou sdílenou party přes Firebase.'}
+            : isJoining && joinTargetCode
+            ? `Načítám partu z kódu ${joinTargetCode}.`
+            : 'Po vytvoření se sdílený kód objeví tady.'}
         </Text>
-        {isJoining && joinTargetCode ? <Text style={styles.pathHint}>Čekám na: parties/{joinTargetCode}</Text> : null}
-        {syncDebug ? <Text style={styles.pathHint}>{syncDebug}</Text> : null}
-      </View>
-
-      <View style={styles.cardList}>
-        {['Pozvat kamaráda', 'Správci a role', 'Nastavení party'].map((item) => (
-          <View key={item} style={styles.rowCard}>
-            <Text style={styles.cardText}>{item}</Text>
-            <Text style={styles.cardMeta}>otevřít</Text>
-          </View>
-        ))}
       </View>
     </>
   );
@@ -335,17 +320,12 @@ const styles = StyleSheet.create({
     fontSize: 14,
     fontWeight: '900',
   },
-  shareActionRow: {
-    flexDirection: 'row',
-    gap: 8,
-  },
   shareButton: {
     alignItems: 'center',
     backgroundColor: '#FBFAF8',
     borderColor: '#E1DBD2',
     borderRadius: 8,
     borderWidth: 1,
-    flex: 1,
     justifyContent: 'center',
     minHeight: 46,
     paddingHorizontal: 12,
@@ -371,36 +351,10 @@ const styles = StyleSheet.create({
     lineHeight: 18,
     marginTop: 2,
   },
-  pathHint: {
-    color: '#9CA3AF',
-    fontSize: 12,
-    lineHeight: 18,
-    marginTop: 6,
-  },
-  cardList: {
-    gap: 10,
-  },
-  rowCard: {
-    alignItems: 'center',
-    backgroundColor: '#FFFFFF',
-    borderColor: '#E1DBD2',
-    borderRadius: 8,
-    borderWidth: 1,
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    padding: 14,
-  },
   cardText: {
     color: '#374151',
     fontSize: 15,
     fontWeight: '700',
     lineHeight: 21,
-  },
-  cardMeta: {
-    color: '#6B7280',
-    fontSize: 13,
-    fontWeight: '700',
-    lineHeight: 18,
-    marginTop: 4,
   },
 });

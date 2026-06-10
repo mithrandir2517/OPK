@@ -572,7 +572,6 @@ export default function App() {
               isJoining={partySyncMode === 'joining'}
               syncError={partySyncError}
               joinTargetCode={joinTargetCode}
-              syncDebug={partySyncDebug}
             />
           )}
         </ScrollView>
