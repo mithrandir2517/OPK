@@ -325,6 +325,7 @@ const styles = StyleSheet.create({
   },
   partyRowExpanded: {
     alignItems: 'stretch',
+    flexDirection: 'column',
     gap: 12,
     justifyContent: 'flex-start',
   },
@@ -335,10 +336,12 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     gap: 8,
     overflow: 'hidden',
+    maxWidth: '100%',
     paddingHorizontal: 10,
     paddingVertical: 7,
   },
   memberChipBody: {
+    flexShrink: 1,
     minWidth: 0,
   },
   memberChipText: {
@@ -449,6 +452,7 @@ const styles = StyleSheet.create({
     borderWidth: 1,
     flexDirection: 'row',
     justifyContent: 'space-between',
+    maxWidth: '100%',
     padding: 12,
   },
   partyRowActive: {
@@ -480,6 +484,7 @@ const styles = StyleSheet.create({
     color: '#15251F',
     fontSize: 12,
     fontWeight: '900',
+    flexShrink: 0,
     marginLeft: 12,
   },
   actionGrid: {
@@ -496,6 +501,7 @@ const styles = StyleSheet.create({
   activeActions: {
     flexDirection: 'row',
     gap: 8,
+    justifyContent: 'flex-start',
   },
   smallAction: {
     alignItems: 'center',
@@ -505,6 +511,7 @@ const styles = StyleSheet.create({
     borderWidth: 1,
     justifyContent: 'center',
     minHeight: 34,
+    maxWidth: '100%',
     paddingHorizontal: 10,
   },
   smallActionText: {
