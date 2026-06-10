@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useMemo, useState } from 'react';
 import { Pressable, StyleSheet, Text, TextInput, View } from 'react-native';
 import { BackToOpk } from '../components/BackToOpk';
 import { PartyMember, PartyRef, PartyState } from '../types';
@@ -32,6 +32,27 @@ export function PartyScreen({
 }: PartyScreenProps) {
   const [newMember, setNewMember] = useState('');
   const [inviteCode, setInviteCode] = useState('');
+  const [editOpen, setEditOpen] = useState(false);
+
+  const partyCards = useMemo(
+    () => [
+      {
+        name: party.name,
+        city: party.city,
+        inviteCode: party.inviteCode,
+        memberCount: party.members.length,
+        isActive: true,
+      },
+      ...partyRefs.filter((item) => item.inviteCode !== party.inviteCode).map((item) => ({
+        name: item.name,
+        city: item.city,
+        inviteCode: item.inviteCode,
+        memberCount: item.memberCount,
+        isActive: false,
+      })),
+    ],
+    [party, partyRefs],
+  );
 
   const updateParty = (nextParty: Partial<PartyState>) => {
     onChangeParty({ ...party, ...nextParty });
@@ -73,133 +94,145 @@ export function PartyScreen({
         <BackToOpk onPress={onBack} />
       </View>
 
-      <View style={styles.activePartyCard}>
-        <Text style={styles.label}>Aktuální party</Text>
-        <Text style={styles.activePartyTitle}>{isJoining ? 'Načítám partu…' : party.name || 'Bez názvu'}</Text>
-        <Text style={styles.darkStatusText}>
-          {isJoining ? 'Čekám na sdílená data z Firebase.' : `${party.members.length} členové · ${party.city || 'bez města'}`}
-        </Text>
-        <View style={styles.statusRow}>
-          <Text style={styles.syncBadge}>{canSync ? 'Sdíleno přes Firebase' : 'Jen lokálně'}</Text>
-          <Text style={styles.syncHint}>{joinTargetCode ?? party.inviteCode}</Text>
-        </View>
-        <View style={styles.partyMembers}>
-          {party.members.map((member) => (
-            <Pressable key={member.uid} style={styles.memberChip} onPress={() => removeMember(member)}>
-              <View style={styles.memberChipBody}>
-                <Text style={styles.memberChipText}>{member.displayName}</Text>
-                <Text style={styles.memberChipMeta}>{member.email ?? member.uid}</Text>
-              </View>
-              <Text style={styles.memberChipRemove}>×</Text>
-            </Pressable>
-          ))}
-        </View>
-      </View>
-
-      <View style={styles.listCard}>
+      <View style={styles.stackCard}>
         <View style={styles.listHeader}>
-          <Text style={styles.formTitle}>Moje party</Text>
-          <Text style={styles.listCount}>{partyRefs.length}</Text>
+          <View>
+            <Text style={styles.formTitle}>Party</Text>
+            <Text style={styles.stackMeta}>{partyCards.length} sdílených skupin</Text>
+          </View>
+          <View style={styles.stackPills}>
+            <Text style={styles.syncBadge}>{canSync ? 'Firebase' : 'Lokálně'}</Text>
+            <Text style={styles.listCount}>{partyRefs.length}</Text>
+          </View>
         </View>
-        {partyRefs.length > 0 ? (
-          <View style={styles.partyList}>
-            {partyRefs.map((partyRef) => {
-              const isActive = partyRef.inviteCode === party.inviteCode;
 
+        <View style={styles.partyList}>
+          {partyCards.map((item) => {
+            const isActive = item.inviteCode === party.inviteCode;
+
+            if (!isActive) {
               return (
                 <Pressable
-                  key={partyRef.inviteCode}
-                  style={[styles.partyRow, isActive && styles.partyRowActive]}
-                  onPress={() => onSelectParty(partyRef.inviteCode)}
+                  key={item.inviteCode}
+                  style={styles.partyRow}
+                  onPress={() => onSelectParty(item.inviteCode)}
                 >
                   <View style={styles.partyRowCopy}>
-                    <Text style={styles.partyRowTitle}>{partyRef.name || 'Bez názvu'}</Text>
+                    <Text style={styles.partyRowTitle}>{item.name || 'Bez názvu'}</Text>
                     <Text style={styles.partyRowMeta}>
-                      {partyRef.city || 'bez města'} · {partyRef.memberCount} členů
+                      {item.city || 'bez města'} · {item.memberCount} členů
                     </Text>
-                    <Text style={styles.partyRowCode}>{partyRef.inviteCode}</Text>
+                    <Text style={styles.partyRowCode}>{item.inviteCode}</Text>
                   </View>
-                  <Text style={styles.partyRowAction}>{isActive ? 'Aktivní' : 'Otevřít'}</Text>
+                  <Text style={styles.partyRowAction}>Otevřít</Text>
                 </Pressable>
               );
-            })}
-          </View>
-        ) : (
-          <Text style={styles.syncStatus}>Zatím žádné sdílené party.</Text>
-        )}
+            }
+
+            return (
+              <View key={item.inviteCode} style={[styles.partyRow, styles.partyRowActive, styles.partyRowExpanded]}>
+                <View style={styles.partyRowCopy}>
+                  <Text style={styles.partyRowTitle}>{isJoining ? 'Načítám partu…' : item.name || 'Bez názvu'}</Text>
+                  <Text style={styles.partyRowMeta}>
+                    {isJoining ? 'Čekám na sdílená data z Firebase.' : `${item.city || 'bez města'} · ${party.members.length} členové`}
+                  </Text>
+                  <Text style={styles.partyRowCode}>{item.inviteCode}</Text>
+                </View>
+                <View style={styles.activeActions}>
+                  <Pressable style={styles.smallAction} onPress={() => setEditOpen((open) => !open)}>
+                    <Text style={styles.smallActionText}>{editOpen ? 'Zavřít' : 'Upravit'}</Text>
+                  </Pressable>
+                </View>
+                <View style={styles.partyMembers}>
+                  {party.members.map((member) => (
+                    <Pressable key={member.uid} style={styles.memberChip} onPress={() => removeMember(member)}>
+                      <View style={styles.memberChipBody}>
+                        <Text style={styles.memberChipText}>{member.displayName}</Text>
+                        <Text style={styles.memberChipMeta}>{member.email ?? member.uid}</Text>
+                      </View>
+                      <Text style={styles.memberChipRemove}>×</Text>
+                    </Pressable>
+                  ))}
+                </View>
+                {editOpen ? (
+                  <View style={styles.editPanel}>
+                    <View style={styles.formField}>
+                      <Text style={styles.inputLabel}>Název party</Text>
+                      <TextInput
+                        value={party.name}
+                        onChangeText={updateName}
+                        placeholder="Parta Vyškov"
+                        placeholderTextColor="#9CA3AF"
+                        style={styles.textInput}
+                      />
+                    </View>
+                    <View style={styles.formField}>
+                      <Text style={styles.inputLabel}>Město</Text>
+                      <TextInput
+                        value={party.city}
+                        onChangeText={(city) => updateParty({ city })}
+                        placeholder="Vyškov"
+                        placeholderTextColor="#9CA3AF"
+                        style={styles.textInput}
+                      />
+                    </View>
+                    <View style={styles.formField}>
+                      <Text style={styles.inputLabel}>Lokální člen</Text>
+                      <View style={styles.memberInputRow}>
+                        <TextInput
+                          value={newMember}
+                          onChangeText={setNewMember}
+                          placeholder="Jméno kamaráda"
+                          placeholderTextColor="#9CA3AF"
+                          style={[styles.textInput, styles.memberInput]}
+                        />
+                        <Pressable style={styles.addMemberButton} onPress={addMember}>
+                          <Text style={styles.addMemberButtonText}>Přidat</Text>
+                        </Pressable>
+                      </View>
+                    </View>
+                  </View>
+                ) : null}
+              </View>
+            );
+          })}
+        </View>
       </View>
 
-      <View style={styles.formCard}>
-        <Text style={styles.formTitle}>Nastavení party</Text>
-        <View style={styles.formField}>
-          <Text style={styles.inputLabel}>Název party</Text>
-          <TextInput
-            value={party.name}
-            onChangeText={updateName}
-            placeholder="Parta Vyškov"
-            placeholderTextColor="#9CA3AF"
-            style={styles.textInput}
-          />
+      <View style={styles.actionGrid}>
+        <View style={styles.actionCard}>
+          <Text style={styles.formTitle}>Nová party</Text>
+          <Text style={styles.cardText}>Založí novou sdílenou partu z aktuálního názvu a města.</Text>
+          <Pressable style={[styles.shareButton, styles.shareButtonPrimary]} onPress={onCreateParty}>
+            <Text style={styles.shareButtonPrimaryText}>Vytvořit</Text>
+          </Pressable>
         </View>
-        <View style={styles.formField}>
-          <Text style={styles.inputLabel}>Město</Text>
-          <TextInput
-            value={party.city}
-            onChangeText={(city) => updateParty({ city })}
-            placeholder="Vyškov"
-            placeholderTextColor="#9CA3AF"
-            style={styles.textInput}
-          />
-        </View>
-        <View style={styles.formField}>
-          <Text style={styles.inputLabel}>Lokální člen</Text>
-          <View style={styles.memberInputRow}>
+
+        <View style={styles.actionCard}>
+          <Text style={styles.formTitle}>Připojit se</Text>
+          <Text style={styles.cardText}>Zadej kód od kamaráda a načti jeho partu na tento telefon.</Text>
+          <View style={styles.formField}>
+            <Text style={styles.inputLabel}>Kód party</Text>
             <TextInput
-              value={newMember}
-              onChangeText={setNewMember}
-              placeholder="Jméno kamaráda"
+              value={inviteCode}
+              onChangeText={setInviteCode}
+              placeholder="OPK846"
               placeholderTextColor="#9CA3AF"
-              style={[styles.textInput, styles.memberInput]}
+              autoCapitalize="characters"
+              style={styles.textInput}
             />
-            <Pressable style={styles.addMemberButton} onPress={addMember}>
-              <Text style={styles.addMemberButtonText}>Přidat</Text>
-            </Pressable>
           </View>
+          <Pressable style={[styles.shareButton, styles.shareButtonPrimary]} onPress={() => onJoinParty(inviteCode)}>
+            <Text style={styles.shareButtonPrimaryText}>{isJoining ? 'Připojuji…' : 'Připojit se'}</Text>
+          </Pressable>
+          <Text style={styles.syncStatus}>
+            {syncError
+              ? `Firebase chyba: ${syncError}`
+              : isJoining && joinTargetCode
+              ? `Načítám partu z kódu ${joinTargetCode}.`
+              : 'Po vytvoření se sdílený kód objeví tady.'}
+          </Text>
         </View>
-      </View>
-
-      <View style={styles.formCard}>
-        <Text style={styles.formTitle}>Nová party</Text>
-        <Text style={styles.cardText}>Založí novou sdílenou partu z aktuálního názvu a města.</Text>
-        <Pressable style={[styles.shareButton, styles.shareButtonPrimary]} onPress={onCreateParty}>
-          <Text style={styles.shareButtonPrimaryText}>Vytvořit novou party</Text>
-        </Pressable>
-      </View>
-
-      <View style={styles.formCard}>
-        <Text style={styles.formTitle}>Připojit se</Text>
-        <Text style={styles.cardText}>Zadej kód od kamaráda a načti jeho partu na tento telefon.</Text>
-        <View style={styles.formField}>
-          <Text style={styles.inputLabel}>Kód party</Text>
-          <TextInput
-            value={inviteCode}
-            onChangeText={setInviteCode}
-            placeholder="OPK-VYSKOV-123"
-            placeholderTextColor="#9CA3AF"
-            autoCapitalize="characters"
-            style={styles.textInput}
-          />
-        </View>
-        <Pressable style={[styles.shareButton, styles.shareButtonPrimary]} onPress={() => onJoinParty(inviteCode)}>
-          <Text style={styles.shareButtonPrimaryText}>{isJoining ? 'Připojuji…' : 'Připojit se'}</Text>
-        </Pressable>
-        <Text style={styles.syncStatus}>
-          {syncError
-            ? `Firebase chyba: ${syncError}`
-            : isJoining && joinTargetCode
-            ? `Načítám partu z kódu ${joinTargetCode}.`
-            : 'Po vytvoření se sdílený kód objeví tady.'}
-        </Text>
       </View>
     </>
   );
@@ -223,6 +256,25 @@ const styles = StyleSheet.create({
     borderRadius: 8,
     borderWidth: 1,
     padding: 16,
+  },
+  stackCard: {
+    backgroundColor: '#FFFFFF',
+    borderColor: '#E1DBD2',
+    borderRadius: 8,
+    borderWidth: 1,
+    gap: 12,
+    padding: 14,
+  },
+  stackMeta: {
+    color: '#6B7280',
+    fontSize: 12,
+    fontWeight: '700',
+    marginTop: 2,
+  },
+  stackPills: {
+    alignItems: 'center',
+    flexDirection: 'row',
+    gap: 8,
   },
   label: {
     color: '#6B7280',
@@ -270,6 +322,11 @@ const styles = StyleSheet.create({
     flexWrap: 'wrap',
     gap: 8,
     marginTop: 16,
+  },
+  partyRowExpanded: {
+    alignItems: 'stretch',
+    gap: 12,
+    justifyContent: 'flex-start',
   },
   memberChip: {
     alignItems: 'center',
@@ -424,6 +481,40 @@ const styles = StyleSheet.create({
     fontSize: 12,
     fontWeight: '900',
     marginLeft: 12,
+  },
+  actionGrid: {
+    gap: 10,
+  },
+  actionCard: {
+    backgroundColor: '#FFFFFF',
+    borderColor: '#E1DBD2',
+    borderRadius: 8,
+    borderWidth: 1,
+    gap: 12,
+    padding: 14,
+  },
+  activeActions: {
+    flexDirection: 'row',
+    gap: 8,
+  },
+  smallAction: {
+    alignItems: 'center',
+    backgroundColor: '#FBFAF8',
+    borderColor: '#E1DBD2',
+    borderRadius: 8,
+    borderWidth: 1,
+    justifyContent: 'center',
+    minHeight: 34,
+    paddingHorizontal: 10,
+  },
+  smallActionText: {
+    color: '#374151',
+    fontSize: 12,
+    fontWeight: '900',
+  },
+  editPanel: {
+    gap: 12,
+    marginTop: 2,
   },
   shareButton: {
     alignItems: 'center',
