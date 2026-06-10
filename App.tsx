@@ -180,6 +180,17 @@ function makePartyMember(user: { uid: string; displayName: string; email: string
   };
 }
 
+function mergeCurrentMember(party: PartyState, firebaseUser: { uid: string; displayName: string; email: string | null }, profile: UserProfile) {
+  const member = makePartyMember(firebaseUser, profile);
+
+  return party.members.some((item) => item.uid === member.uid)
+    ? party
+    : {
+        ...party,
+        members: [...party.members, member],
+      };
+}
+
 function arePartyMembersEqual(first: PartyMember[], second: PartyMember[]) {
   return (
     first.length === second.length &&
@@ -326,21 +337,23 @@ export default function App() {
     const unsubscribe = subscribePartySync(
       party.inviteCode,
       (remoteParty) => {
+      const mergedRemoteParty = mergeCurrentMember(remoteParty, firebaseUser, profile);
+
       setParty((current) => {
         if (
-          current.name === remoteParty.name &&
-          current.city === remoteParty.city &&
-          current.inviteCode === remoteParty.inviteCode &&
-          arePartyMembersEqual(current.members, remoteParty.members)
+          current.name === mergedRemoteParty.name &&
+          current.city === mergedRemoteParty.city &&
+          current.inviteCode === mergedRemoteParty.inviteCode &&
+          arePartyMembersEqual(current.members, mergedRemoteParty.members)
         ) {
           return current;
         }
 
-        return remoteParty;
+        return mergedRemoteParty;
       });
       setPartySyncMode('ready');
       setPartySyncError(null);
-      setPartySyncDebug(`Načteno: ${remoteParty.name} / ${remoteParty.city} / ${remoteParty.inviteCode}`);
+      setPartySyncDebug(`Načteno: ${mergedRemoteParty.name} / ${mergedRemoteParty.city} / ${mergedRemoteParty.inviteCode}`);
       },
       (error) => {
         setPartySyncError(error.message);
@@ -368,15 +381,17 @@ export default function App() {
     const unsubscribe = subscribePartySync(
       joinTargetCode,
       (remoteParty) => {
-      if (!mounted) {
-        return;
-      }
+        if (!mounted) {
+          return;
+        }
 
-      setParty(remoteParty);
+      const mergedRemoteParty = mergeCurrentMember(remoteParty, firebaseUser, profile);
+
+      setParty(mergedRemoteParty);
       setPartySyncMode('ready');
       setJoinTargetCode(null);
       setPartySyncError(null);
-      setPartySyncDebug(`Načteno: ${remoteParty.name} / ${remoteParty.city} / ${remoteParty.inviteCode}`);
+      setPartySyncDebug(`Načteno: ${mergedRemoteParty.name} / ${mergedRemoteParty.city} / ${mergedRemoteParty.inviteCode}`);
       },
       (error) => {
         if (!mounted) {

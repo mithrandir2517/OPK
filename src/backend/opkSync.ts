@@ -1,5 +1,6 @@
 import {
   addDoc,
+  arrayUnion,
   collection,
   doc,
   getDoc,
@@ -9,6 +10,7 @@ import {
   query,
   serverTimestamp,
   setDoc,
+  updateDoc,
 } from 'firebase/firestore';
 import { firestore, firebaseEnabled } from './firebase';
 import { PartyMember, PartyState, PivoState, SavedMemory } from '../types';
@@ -148,17 +150,25 @@ export async function savePartySync(party: PartyState) {
     return;
   }
 
+  const partyRef = doc(firestore, 'parties', party.inviteCode);
+
   await setDoc(
-    doc(firestore, 'parties', party.inviteCode),
+    partyRef,
     {
       name: party.name,
       city: party.city,
-      members: party.members,
       inviteCode: party.inviteCode,
       updatedAt: serverTimestamp(),
     },
     { merge: true },
   );
+
+  if (party.members.length > 0) {
+    await updateDoc(partyRef, {
+      members: arrayUnion(...party.members),
+      updatedAt: serverTimestamp(),
+    });
+  }
 }
 
 export function subscribePivoSync(inviteCode: string, onChange: (pivoState: PivoState) => void) {

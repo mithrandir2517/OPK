@@ -84,7 +84,10 @@ export function PartyScreen({
         <View style={styles.partyMembers}>
           {party.members.map((member) => (
             <Pressable key={member.uid} style={styles.memberChip} onPress={() => removeMember(member)}>
-              <Text style={styles.memberChipText}>{member.displayName}</Text>
+              <View style={styles.memberChipBody}>
+                <Text style={styles.memberChipText}>{member.displayName}</Text>
+                <Text style={styles.memberChipMeta}>{member.email ?? member.uid}</Text>
+              </View>
               <Text style={styles.memberChipRemove}>×</Text>
             </Pressable>
           ))}
@@ -251,15 +254,25 @@ const styles = StyleSheet.create({
     backgroundColor: '#F4F1EA',
     borderRadius: 8,
     flexDirection: 'row',
-    gap: 6,
+    gap: 8,
     overflow: 'hidden',
     paddingHorizontal: 10,
     paddingVertical: 7,
+  },
+  memberChipBody: {
+    minWidth: 0,
   },
   memberChipText: {
     color: '#15251F',
     fontSize: 13,
     fontWeight: '900',
+  },
+  memberChipMeta: {
+    color: '#6B7280',
+    fontSize: 10,
+    fontWeight: '700',
+    lineHeight: 14,
+    marginTop: 1,
   },
   memberChipRemove: {
     color: '#6B7280',
