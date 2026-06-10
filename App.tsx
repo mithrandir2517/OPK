@@ -23,10 +23,16 @@ import { KronikaScreen } from './src/screens/KronikaScreen';
 import { PartyScreen } from './src/screens/PartyScreen';
 import { ProfilScreen } from './src/screens/ProfilScreen';
 import { ZpravyScreen } from './src/screens/ZpravyScreen';
-import { savePartySync, savePivoSync, subscribePartySync, subscribePivoSync } from './src/backend/opkSync';
+import {
+  fetchPartySync,
+  savePartySync,
+  savePivoSync,
+  subscribePartySync,
+  subscribePivoSync,
+} from './src/backend/opkSync';
 import { saveActivityVoteSync, subscribeActivityVotesSync } from './src/backend/pollSync';
 import { loadJson, saveJson, storageKeys } from './src/storage/localStorage';
-import { ActivityKey, ActivityVote, PartyState, PivoState, SectionKey, UserProfile } from './src/types';
+import { ActivityKey, ActivityVote, PartyMember, PartyState, PivoState, SectionKey, UserProfile } from './src/types';
 import {
   firebaseAuth,
   firebaseEnabled,
@@ -43,7 +49,11 @@ const defaultProfile: UserProfile = {
 const defaultParty: PartyState = {
   name: 'Parta Vyškov',
   city: 'Vyškov',
-  members: ['Marek', 'Tomáš', 'Pavel'],
+  members: [
+    { uid: 'legacy-marek', displayName: 'Marek', source: 'legacy' },
+    { uid: 'legacy-tomas', displayName: 'Tomáš', source: 'legacy' },
+    { uid: 'legacy-pavel', displayName: 'Pavel', source: 'legacy' },
+  ],
   inviteCode: 'OPK-VYSKOV',
 };
 
@@ -74,15 +84,65 @@ function normalizeProfile(value: Partial<UserProfile> | null): UserProfile {
   };
 }
 
-function normalizeParty(value: Partial<PartyState> | null): PartyState {
-  const members = Array.isArray(value?.members)
-    ? value.members.filter((member): member is string => typeof member === 'string' && member.trim().length > 0)
-    : defaultParty.members;
+function normalizePartyMembers(value: unknown): PartyMember[] {
+  if (!Array.isArray(value)) {
+    return defaultParty.members;
+  }
 
+  const mapped: PartyMember[] = [];
+
+  value.forEach((member, index) => {
+    if (typeof member === 'string') {
+      const displayName = member.trim();
+      if (!displayName) {
+        return;
+      }
+
+      mapped.push({
+        uid: `legacy-${index}-${displayName.toLowerCase().replace(/[^a-z0-9]/g, '-')}`,
+        displayName,
+        email: null,
+        source: 'legacy',
+      });
+      return;
+    }
+
+    if (
+      member &&
+      typeof member === 'object' &&
+      typeof (member as Record<string, unknown>).uid === 'string' &&
+      typeof (member as Record<string, unknown>).displayName === 'string'
+    ) {
+      const record = member as Record<string, string | unknown>;
+      const uid = (record.uid as string).trim();
+      const displayName = (record.displayName as string).trim();
+
+      if (!uid || !displayName) {
+        return;
+      }
+
+      const rawSource = record.source;
+      const source =
+        typeof rawSource === 'string' && (rawSource === 'google' || rawSource === 'manual' || rawSource === 'legacy')
+          ? (rawSource as PartyMember['source'])
+          : 'legacy';
+      mapped.push({
+        uid,
+        displayName,
+        email: typeof record.email === 'string' ? record.email : null,
+        source,
+      });
+    }
+  });
+
+  return mapped.length > 0 ? mapped : defaultParty.members;
+}
+
+function normalizeParty(value: Partial<PartyState> | null): PartyState {
   return {
-    name: typeof value?.name === 'string' && value.name.trim() ? value.name : defaultParty.name,
-    city: typeof value?.city === 'string' && value.city.trim() ? value.city : defaultParty.city,
-    members: members.length > 0 ? members : defaultParty.members,
+    name: typeof value?.name === 'string' ? value.name : defaultParty.name,
+    city: typeof value?.city === 'string' ? value.city : defaultParty.city,
+    members: normalizePartyMembers(value?.members),
     inviteCode:
       typeof value?.inviteCode === 'string' && value.inviteCode.trim()
         ? value.inviteCode
@@ -100,9 +160,39 @@ function normalizePartyCode(value: string) {
 }
 
 function makePartyCode(baseName: string, city: string) {
-  const base = normalizePartyCode(`${baseName} ${city}`.slice(0, 16)) || 'OPK';
+  const compactBase = `${baseName} ${city}`
+    .toUpperCase()
+    .replace(/[^A-Z0-9]/g, '')
+    .slice(0, 4);
+  const base = compactBase || 'OPK';
   const suffix = Math.floor(Math.random() * 900 + 100);
-  return `${base}-${suffix}`;
+  return `${base}OPK${suffix}`;
+}
+
+function makePartyMember(user: { uid: string; displayName: string; email: string | null }, profile: UserProfile): PartyMember {
+  const displayName = profile.name.trim() !== defaultProfile.name ? profile.name.trim() : user.displayName.trim();
+
+  return {
+    uid: user.uid,
+    displayName: displayName || user.email || 'Google uživatel',
+    email: user.email,
+    source: 'google',
+  };
+}
+
+function arePartyMembersEqual(first: PartyMember[], second: PartyMember[]) {
+  return (
+    first.length === second.length &&
+    first.every((member, index) => {
+      const other = second[index];
+      return (
+        member.uid === other.uid &&
+        member.displayName === other.displayName &&
+        (member.email || null) === (other.email || null) &&
+        (member.source || 'legacy') === (other.source || 'legacy')
+      );
+    })
+  );
 }
 
 export default function App() {
@@ -111,6 +201,9 @@ export default function App() {
   const [storageReady, setStorageReady] = useState(false);
   const [authGateDismissed, setAuthGateDismissed] = useState(false);
   const [partySyncMode, setPartySyncMode] = useState<PartySyncMode>('ready');
+  const [joinTargetCode, setJoinTargetCode] = useState<string | null>(null);
+  const [partySyncError, setPartySyncError] = useState<string | null>(null);
+  const [partySyncDebug, setPartySyncDebug] = useState<string | null>(null);
   const [profile, setProfile] = useState<UserProfile>(defaultProfile);
   const [party, setParty] = useState<PartyState>(defaultParty);
   const [firebaseUser, setFirebaseUser] = useState<null | { uid: string; displayName: string; email: string | null; photoURL: string | null }>(null);
@@ -164,13 +257,18 @@ export default function App() {
     if (storageReady) {
       saveJson(storageKeys.selectedSection, selectedSection);
       saveJson(storageKeys.profile, profile);
-      saveJson(storageKeys.party, party);
+      if (partySyncMode !== 'joining' && !joinTargetCode) {
+        saveJson(storageKeys.party, party);
+      }
     }
-  }, [party, profile, selectedSection, storageReady]);
+  }, [joinTargetCode, party, partySyncMode, profile, selectedSection, storageReady]);
 
   useEffect(() => {
     if (storageReady && firebaseEnabled && firebaseUser && partySyncMode === 'ready') {
-      void savePartySync(party);
+      void savePartySync(party).catch((error: unknown) => {
+        setPartySyncError(error instanceof Error ? error.message : 'Nepovedlo se uložit party do Firebase.');
+      });
+      setPartySyncDebug(`Uloženo: ${party.name} / ${party.city} / ${party.inviteCode}`);
     }
   }, [firebaseUser, party, partySyncMode, storageReady]);
 
@@ -179,8 +277,7 @@ export default function App() {
       return;
     }
 
-    const fallbackName = firebaseUser.displayName.trim();
-    const preferredName = profile.name.trim() !== defaultProfile.name ? profile.name.trim() : fallbackName;
+    const preferredName = profile.name.trim() !== defaultProfile.name ? profile.name.trim() : firebaseUser.displayName.trim();
 
     if (!preferredName) {
       return;
@@ -201,19 +298,18 @@ export default function App() {
       return;
     }
 
-    const fallbackName = firebaseUser.displayName.trim();
-    const preferredName = profile.name.trim() !== defaultProfile.name ? profile.name.trim() : fallbackName;
+    const member = makePartyMember(firebaseUser, profile);
 
-    if (!preferredName) {
+    if (!member.displayName.trim()) {
       return;
     }
 
     setParty((current) =>
-      current.members.includes(preferredName)
+      current.members.some((item) => item.uid === member.uid)
         ? current
         : {
             ...current,
-            members: [...current.members, preferredName],
+            members: [...current.members, member],
           },
     );
   }, [firebaseUser, profile.name, storageReady]);
@@ -223,18 +319,19 @@ export default function App() {
       return;
     }
 
-    if (!firebaseEnabled || !firebaseUser) {
+    if (!firebaseEnabled || !firebaseUser || joinTargetCode) {
       return;
     }
 
-    const unsubscribe = subscribePartySync(party.inviteCode, (remoteParty) => {
+    const unsubscribe = subscribePartySync(
+      party.inviteCode,
+      (remoteParty) => {
       setParty((current) => {
         if (
           current.name === remoteParty.name &&
           current.city === remoteParty.city &&
           current.inviteCode === remoteParty.inviteCode &&
-          current.members.length === remoteParty.members.length &&
-          current.members.every((member, index) => member === remoteParty.members[index])
+          arePartyMembersEqual(current.members, remoteParty.members)
         ) {
           return current;
         }
@@ -242,10 +339,82 @@ export default function App() {
         return remoteParty;
       });
       setPartySyncMode('ready');
-    });
+      setPartySyncError(null);
+      setPartySyncDebug(`Načteno: ${remoteParty.name} / ${remoteParty.city} / ${remoteParty.inviteCode}`);
+      },
+      (error) => {
+        setPartySyncError(error.message);
+        setPartySyncMode('ready');
+      },
+    );
 
     return unsubscribe;
-  }, [firebaseUser, party.inviteCode, storageReady]);
+  }, [firebaseUser, joinTargetCode, party.inviteCode, storageReady]);
+
+  useEffect(() => {
+    if (!storageReady || !firebaseEnabled || !firebaseUser || !joinTargetCode) {
+      return;
+    }
+
+    let mounted = true;
+    const timeout = setTimeout(() => {
+      if (!mounted) {
+        return;
+      }
+
+      setPartySyncError(`Party ${joinTargetCode} se ve Firebase nenašla.`);
+    }, 5000);
+
+    const unsubscribe = subscribePartySync(
+      joinTargetCode,
+      (remoteParty) => {
+      if (!mounted) {
+        return;
+      }
+
+      setParty(remoteParty);
+      setPartySyncMode('ready');
+      setJoinTargetCode(null);
+      setPartySyncError(null);
+      setPartySyncDebug(`Načteno: ${remoteParty.name} / ${remoteParty.city} / ${remoteParty.inviteCode}`);
+      },
+      (error) => {
+        if (!mounted) {
+          return;
+        }
+
+        setPartySyncError(error.message);
+        setPartySyncMode('ready');
+      },
+    );
+
+    void fetchPartySync(joinTargetCode)
+      .then((remoteParty) => {
+        if (!mounted || !remoteParty) {
+          return;
+        }
+
+        setParty(remoteParty);
+        setPartySyncMode('ready');
+        setJoinTargetCode(null);
+        setPartySyncError(null);
+        setPartySyncDebug(`Načteno: ${remoteParty.name} / ${remoteParty.city} / ${remoteParty.inviteCode}`);
+      })
+      .catch((error: unknown) => {
+        if (!mounted) {
+          return;
+        }
+
+        setPartySyncError(error instanceof Error ? error.message : 'Nepovedlo se načíst party z Firebase.');
+        setPartySyncMode('ready');
+      });
+
+    return () => {
+      mounted = false;
+      clearTimeout(timeout);
+      unsubscribe();
+    };
+  }, [firebaseUser, joinTargetCode, storageReady]);
 
   const selectedActivity = useMemo<ActivityKey>(
     () =>
@@ -256,18 +425,35 @@ export default function App() {
   );
 
   const activeActivity = activityMeta[selectedActivity];
+  const activePartyCode = joinTargetCode ?? party.inviteCode;
   const showAuthGate = storageReady && firebaseEnabled && !firebaseUser && !authGateDismissed;
 
   const handleCreateParty = () => {
-    const creatorName =
-      profile.name.trim() !== defaultProfile.name ? profile.name.trim() : firebaseUser?.displayName?.trim() || 'Marek';
+    const creator =
+      firebaseUser
+        ? makePartyMember({ uid: firebaseUser.uid, displayName: firebaseUser.displayName, email: firebaseUser.email }, profile)
+        : {
+            uid: 'legacy-creator',
+            displayName: profile.name.trim() !== defaultProfile.name ? profile.name.trim() : 'Marek',
+            source: 'manual' as const,
+          };
 
-    setParty((current) => ({
-      ...current,
-      inviteCode: makePartyCode(current.name, current.city),
-      members: [creatorName],
-    }));
+    setJoinTargetCode(null);
+    setPartySyncError(null);
+    const nextParty = {
+      ...party,
+      inviteCode: makePartyCode(party.name, party.city),
+      members: [creator],
+    };
+
+    setParty(nextParty);
     setPartySyncMode('ready');
+
+    if (firebaseEnabled && firebaseUser) {
+      void savePartySync(nextParty).catch((error: unknown) => {
+        setPartySyncError(error instanceof Error ? error.message : 'Nepovedlo se založit party ve Firebase.');
+      });
+    }
   };
 
   const handleJoinParty = (inviteCode: string) => {
@@ -276,11 +462,10 @@ export default function App() {
       return;
     }
 
+    setJoinTargetCode(normalized);
+    setPartySyncError(null);
+    setPartySyncDebug(null);
     setPartySyncMode('joining');
-    setParty((current) => ({
-      ...current,
-      inviteCode: normalized,
-    }));
   };
 
   if (showAuthGate) {
@@ -298,10 +483,10 @@ export default function App() {
       <View style={styles.appShell}>
         <View style={styles.header}>
           <View style={styles.headerLeft}>
-            <OpkLogo />
-            <Pressable style={styles.partyPill} onPress={() => setSelectedSection('party')}>
+              <OpkLogo />
+              <Pressable style={styles.partyPill} onPress={() => setSelectedSection('party')}>
               <Text style={styles.partyLabel}>Parta</Text>
-              <Text style={styles.partyName}>{party.name}</Text>
+              <Text style={styles.partyName}>{partySyncMode === 'joining' ? 'Načítám…' : party.name}</Text>
               <MaterialCommunityIcons name="chevron-down" size={18} color="#6B7280" />
             </Pressable>
           </View>
@@ -314,14 +499,14 @@ export default function App() {
           {selectedSection === 'pivo' && (
             <PivoScreen
               accent={activeActivity.accent}
-              partyCode={party.inviteCode}
+              partyCode={activePartyCode}
               canSync={firebaseEnabled && !!firebaseUser}
             />
           )}
           {selectedSection === 'obed' && (
             <ObedScreen
               accent={activeActivity.accent}
-              partyCode={party.inviteCode}
+              partyCode={activePartyCode}
               canSync={firebaseEnabled && !!firebaseUser}
               viewerId={firebaseUser?.uid ?? null}
               viewerName={firebaseUser?.displayName ?? profile.name}
@@ -330,7 +515,7 @@ export default function App() {
           {selectedSection === 'kolo' && (
             <KoloScreen
               accent={activeActivity.accent}
-              partyCode={party.inviteCode}
+              partyCode={activePartyCode}
               canSync={firebaseEnabled && !!firebaseUser}
               viewerId={firebaseUser?.uid ?? null}
               viewerName={firebaseUser?.displayName ?? profile.name}
@@ -339,7 +524,7 @@ export default function App() {
           {selectedSection === 'kronika' && (
             <KronikaScreen
               onBack={() => setSelectedSection(selectedActivity)}
-              partyCode={party.inviteCode}
+              partyCode={activePartyCode}
               canSync={firebaseEnabled && !!firebaseUser}
             />
           )}
@@ -370,6 +555,9 @@ export default function App() {
               onCreateParty={handleCreateParty}
               onJoinParty={handleJoinParty}
               isJoining={partySyncMode === 'joining'}
+              syncError={partySyncError}
+              joinTargetCode={joinTargetCode}
+              syncDebug={partySyncDebug}
             />
           )}
         </ScrollView>

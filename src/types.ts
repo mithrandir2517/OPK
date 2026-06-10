@@ -38,8 +38,15 @@ export type UserProfile = {
 export type PartyState = {
   name: string;
   city: string;
-  members: string[];
+  members: PartyMember[];
   inviteCode: string;
+};
+
+export type PartyMember = {
+  uid: string;
+  displayName: string;
+  email?: string | null;
+  source?: 'google' | 'manual' | 'legacy';
 };
 
 export type PivoState = {

@@ -1,7 +1,7 @@
 import { useState } from 'react';
 import { Pressable, StyleSheet, Text, TextInput, View } from 'react-native';
 import { BackToOpk } from '../components/BackToOpk';
-import { PartyState } from '../types';
+import { PartyMember, PartyState } from '../types';
 
 type PartyScreenProps = {
   onBack: () => void;
@@ -11,6 +11,9 @@ type PartyScreenProps = {
   onCreateParty: () => void;
   onJoinParty: (inviteCode: string) => void;
   isJoining: boolean;
+  syncError: string | null;
+  joinTargetCode: string | null;
+  syncDebug: string | null;
 };
 
 export function PartyScreen({
@@ -21,6 +24,9 @@ export function PartyScreen({
   onCreateParty,
   onJoinParty,
   isJoining,
+  syncError,
+  joinTargetCode,
+  syncDebug,
 }: PartyScreenProps) {
   const [newMember, setNewMember] = useState('');
   const [inviteCode, setInviteCode] = useState('');
@@ -36,20 +42,26 @@ export function PartyScreen({
   const addMember = () => {
     const member = newMember.trim();
 
-    if (!member || party.members.includes(member)) {
+    if (!member || party.members.some((item) => item.displayName.toLowerCase() === member.toLowerCase())) {
       return;
     }
 
-    updateParty({ members: [...party.members, member] });
+    const customMember: PartyMember = {
+      uid: `manual-${Date.now()}-${Math.random().toString(36).slice(2, 7)}`,
+      displayName: member,
+      source: 'manual',
+    };
+
+    updateParty({ members: [...party.members, customMember] });
     setNewMember('');
   };
 
-  const removeMember = (member: string) => {
+  const removeMember = (member: PartyMember) => {
     if (party.members.length <= 1) {
       return;
     }
 
-    updateParty({ members: party.members.filter((item) => item !== member) });
+    updateParty({ members: party.members.filter((item) => item.uid !== member.uid) });
   };
 
   return (
@@ -61,14 +73,18 @@ export function PartyScreen({
 
       <View style={styles.activePartyCard}>
         <Text style={styles.label}>Vybraná parta</Text>
-        <Text style={styles.activePartyTitle}>{party.name || 'Bez názvu'}</Text>
+        <Text style={styles.activePartyTitle}>{isJoining ? 'Načítám partu…' : party.name || 'Bez názvu'}</Text>
         <Text style={styles.darkStatusText}>
-          {party.members.length} členové · {party.city || 'bez města'}
+          {isJoining ? 'Čekám na sdílená data z Firebase.' : `${party.members.length} členové · ${party.city || 'bez města'}`}
         </Text>
+        <View style={styles.statusRow}>
+          <Text style={styles.syncBadge}>{canSync ? 'Sdíleno přes Firebase' : 'Jen lokálně'}</Text>
+          <Text style={styles.syncHint}>{joinTargetCode ?? party.inviteCode}</Text>
+        </View>
         <View style={styles.partyMembers}>
           {party.members.map((member) => (
-            <Pressable key={member} style={styles.memberChip} onPress={() => removeMember(member)}>
-              <Text style={styles.memberChipText}>{member}</Text>
+            <Pressable key={member.uid} style={styles.memberChip} onPress={() => removeMember(member)}>
+              <Text style={styles.memberChipText}>{member.displayName}</Text>
               <Text style={styles.memberChipRemove}>×</Text>
             </Pressable>
           ))}
@@ -76,7 +92,7 @@ export function PartyScreen({
       </View>
 
       <View style={styles.formCard}>
-        <Text style={styles.formTitle}>Upravit partu</Text>
+        <Text style={styles.formTitle}>Nastavení party</Text>
         <View style={styles.formField}>
           <Text style={styles.inputLabel}>Název party</Text>
           <TextInput
@@ -98,7 +114,7 @@ export function PartyScreen({
           />
         </View>
         <View style={styles.formField}>
-          <Text style={styles.inputLabel}>Přidat člena</Text>
+          <Text style={styles.inputLabel}>Lokální člen</Text>
           <View style={styles.memberInputRow}>
             <TextInput
               value={newMember}
@@ -115,7 +131,7 @@ export function PartyScreen({
       </View>
 
       <View style={styles.formCard}>
-        <Text style={styles.formTitle}>Sdílení party</Text>
+        <Text style={styles.formTitle}>Společná party</Text>
         <Text style={styles.cardText}>
           Vytvoř nový kód pro vlastní partu, nebo se připoj přes kód od kamaráda.
         </Text>
@@ -138,25 +154,18 @@ export function PartyScreen({
             <Text style={styles.shareButtonPrimaryText}>{isJoining ? 'Připojuji…' : 'Připojit se'}</Text>
           </Pressable>
           <Pressable style={styles.shareButton} onPress={onCreateParty}>
-            <Text style={styles.shareButtonText}>Vytvořit nový kód</Text>
+            <Text style={styles.shareButtonText}>Vytvořit kód</Text>
           </Pressable>
         </View>
         <Text style={styles.syncStatus}>
-          {isJoining
-            ? 'Čekám na data z party podle zadaného kódu.'
-            : 'Nová party vytvoří nový kód a začne se synchronizovat přes Firebase.'}
+          {syncError
+            ? `Firebase chyba: ${syncError}`
+            : isJoining
+            ? 'Načítám data podle zadaného kódu. Pokud to trvá dlouho, party zatím ve Firebase neexistuje.'
+            : 'Vytvoření kódu založí novou sdílenou party přes Firebase.'}
         </Text>
-      </View>
-
-      <View style={styles.inviteCard}>
-        <View>
-          <Text style={styles.label}>Pozvánka</Text>
-          <Text style={styles.inviteCode}>{party.inviteCode}</Text>
-          <Text style={styles.syncStatus}>
-            {canSync ? 'Sdíleno přes Firebase' : 'Lokálně bez backendu'}
-          </Text>
-        </View>
-        <Text style={styles.darkCardAction}>Sdílet kód</Text>
+        {isJoining && joinTargetCode ? <Text style={styles.pathHint}>Čekám na: parties/{joinTargetCode}</Text> : null}
+        {syncDebug ? <Text style={styles.pathHint}>{syncDebug}</Text> : null}
       </View>
 
       <View style={styles.cardList}>
@@ -208,6 +217,28 @@ const styles = StyleSheet.create({
     fontSize: 15,
     lineHeight: 21,
     marginTop: 6,
+  },
+  statusRow: {
+    alignItems: 'center',
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    gap: 8,
+    marginTop: 12,
+  },
+  syncBadge: {
+    backgroundColor: '#DCFCE7',
+    borderRadius: 6,
+    color: '#166534',
+    fontSize: 12,
+    fontWeight: '900',
+    overflow: 'hidden',
+    paddingHorizontal: 8,
+    paddingVertical: 4,
+  },
+  syncHint: {
+    color: '#6B7280',
+    fontSize: 12,
+    fontWeight: '700',
   },
   partyMembers: {
     flexDirection: 'row',
@@ -327,24 +358,11 @@ const styles = StyleSheet.create({
     lineHeight: 18,
     marginTop: 2,
   },
-  inviteCard: {
-    alignItems: 'center',
-    backgroundColor: '#15251F',
-    borderRadius: 8,
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    padding: 16,
-  },
-  inviteCode: {
-    color: '#FFFFFF',
-    fontSize: 22,
-    fontWeight: '900',
-    marginTop: 4,
-  },
-  darkCardAction: {
-    color: '#F8B84E',
-    fontSize: 13,
-    fontWeight: '900',
+  pathHint: {
+    color: '#9CA3AF',
+    fontSize: 12,
+    lineHeight: 18,
+    marginTop: 6,
   },
   cardList: {
     gap: 10,

@@ -1,6 +1,6 @@
 import { getApp, getApps, initializeApp, type FirebaseOptions } from 'firebase/app';
 import { getAuth } from 'firebase/auth';
-import { getFirestore } from 'firebase/firestore';
+import { initializeFirestore } from 'firebase/firestore';
 
 function readEnv(key: string) {
   const value = process.env[key];
@@ -31,5 +31,10 @@ export const firebaseApp = isConfigured
     : initializeApp(firebaseConfig as FirebaseOptions)
   : null;
 
-export const firestore = firebaseApp ? getFirestore(firebaseApp) : null;
+export const firestore = firebaseApp
+  ? initializeFirestore(firebaseApp, {
+      experimentalForceLongPolling: true,
+      useFetchStreams: false,
+    } as never)
+  : null;
 export const firebaseAuth = firebaseApp ? getAuth(firebaseApp) : null;

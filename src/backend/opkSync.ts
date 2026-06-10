@@ -2,6 +2,8 @@ import {
   addDoc,
   collection,
   doc,
+  getDoc,
+  getDocFromServer,
   onSnapshot,
   orderBy,
   query,
@@ -9,19 +11,74 @@ import {
   setDoc,
 } from 'firebase/firestore';
 import { firestore, firebaseEnabled } from './firebase';
-import { PartyState, PivoState, SavedMemory } from '../types';
+import { PartyMember, PartyState, PivoState, SavedMemory } from '../types';
 
-function filterStrings(value: unknown) {
-  return Array.isArray(value)
-    ? value.filter((item): item is string => typeof item === 'string' && item.trim().length > 0)
-    : [];
+function normalizePartyMembers(value: unknown): PartyMember[] {
+  if (!Array.isArray(value)) {
+    return [];
+  }
+
+  const mapped: PartyMember[] = [];
+
+  value.forEach((member, index) => {
+    if (typeof member === 'string') {
+      const displayName = member.trim();
+      if (!displayName) {
+        return;
+      }
+
+      mapped.push({
+        uid: `legacy-${index}-${displayName.toLowerCase().replace(/[^a-z0-9]/g, '-')}`,
+        displayName,
+        email: null,
+        source: 'legacy',
+      });
+      return;
+    }
+
+    if (
+      member &&
+      typeof member === 'object' &&
+      typeof (member as Record<string, unknown>).uid === 'string' &&
+      typeof (member as Record<string, unknown>).displayName === 'string'
+    ) {
+      const record = member as Record<string, string | unknown>;
+      const uid = (record.uid as string).trim();
+      const displayName = (record.displayName as string).trim();
+
+      if (!uid || !displayName) {
+        return;
+      }
+
+      const rawSource = record.source;
+      const source =
+        typeof rawSource === 'string' && (rawSource === 'google' || rawSource === 'manual' || rawSource === 'legacy')
+          ? (rawSource as PartyMember['source'])
+          : 'legacy';
+      mapped.push({
+        uid,
+        displayName,
+        email: typeof record.email === 'string' ? record.email : null,
+        source,
+      });
+    }
+  });
+
+  return mapped;
 }
 
 function mapPartyData(inviteCode: string, data: Record<string, unknown>): PartyState {
   return {
-    name: typeof data.name === 'string' && data.name.trim() ? data.name : 'Parta Vyškov',
-    city: typeof data.city === 'string' && data.city.trim() ? data.city : 'Vyškov',
-    members: filterStrings(data.members).length > 0 ? filterStrings(data.members) : ['Marek', 'Tomáš', 'Pavel'],
+    name: typeof data.name === 'string' ? data.name : 'Parta Vyškov',
+    city: typeof data.city === 'string' ? data.city : 'Vyškov',
+    members:
+      normalizePartyMembers(data.members).length > 0
+        ? normalizePartyMembers(data.members)
+        : [
+            { uid: 'legacy-marek', displayName: 'Marek', email: null, source: 'legacy' },
+            { uid: 'legacy-tomas', displayName: 'Tomáš', email: null, source: 'legacy' },
+            { uid: 'legacy-pavel', displayName: 'Pavel', email: null, source: 'legacy' },
+          ],
     inviteCode: typeof data.inviteCode === 'string' && data.inviteCode.trim() ? data.inviteCode : inviteCode,
   };
 }
@@ -43,18 +100,47 @@ function mapMemoryData(id: string, data: Record<string, unknown>): SavedMemory |
   };
 }
 
-export function subscribePartySync(inviteCode: string, onChange: (party: PartyState) => void) {
+export function subscribePartySync(
+  inviteCode: string,
+  onChange: (party: PartyState) => void,
+  onError?: (error: Error) => void,
+) {
   if (!firebaseEnabled || !firestore) {
     return () => {};
   }
 
-  return onSnapshot(doc(firestore, 'parties', inviteCode), (snapshot) => {
-    if (!snapshot.exists()) {
-      return;
-    }
+  return onSnapshot(
+    doc(firestore, 'parties', inviteCode),
+    (snapshot) => {
+      if (!snapshot.exists()) {
+        return;
+      }
 
-    onChange(mapPartyData(inviteCode, snapshot.data() as Record<string, unknown>));
-  });
+      if (snapshot.metadata.fromCache) {
+        return;
+      }
+
+      onChange(mapPartyData(inviteCode, snapshot.data() as Record<string, unknown>));
+    },
+    (error) => {
+      console.error('Party sync failed', error);
+      onError?.(error as Error);
+    },
+  );
+}
+
+export async function fetchPartySync(inviteCode: string) {
+  if (!firebaseEnabled || !firestore) {
+    return null;
+  }
+
+  const snapshot = await getDocFromServer(doc(firestore, 'parties', inviteCode));
+
+  if (!snapshot.exists()) {
+    return null;
+  }
+
+  return mapPartyData(inviteCode, snapshot.data() as Record<string, unknown>);
 }
 
 export async function savePartySync(party: PartyState) {
