@@ -2,6 +2,8 @@ import {
   addDoc,
   arrayUnion,
   collection,
+  deleteDoc,
+  arrayRemove,
   doc,
   getDoc,
   getDocFromServer,
@@ -82,6 +84,7 @@ function mapPartyData(inviteCode: string, data: Record<string, unknown>): PartyS
             { uid: 'legacy-pavel', displayName: 'Pavel', email: null, source: 'legacy' },
           ],
     inviteCode: typeof data.inviteCode === 'string' && data.inviteCode.trim() ? data.inviteCode : inviteCode,
+    creatorUid: typeof data.creatorUid === 'string' && data.creatorUid.trim() ? data.creatorUid : null,
   };
 }
 
@@ -178,6 +181,7 @@ export async function savePartySync(party: PartyState) {
       name: party.name,
       city: party.city,
       inviteCode: party.inviteCode,
+      creatorUid: party.creatorUid,
       updatedAt: serverTimestamp(),
     },
     { merge: true },
@@ -223,6 +227,33 @@ export async function savePartyRefSync(uid: string, party: PartyState) {
     },
     { merge: true },
   );
+}
+
+export async function removePartyMemberSync(inviteCode: string, member: PartyMember) {
+  if (!firebaseEnabled || !firestore) {
+    return;
+  }
+
+  await updateDoc(doc(firestore, 'parties', inviteCode), {
+    members: arrayRemove(member),
+    updatedAt: serverTimestamp(),
+  });
+}
+
+export async function deletePartySync(inviteCode: string) {
+  if (!firebaseEnabled || !firestore) {
+    return;
+  }
+
+  await deleteDoc(doc(firestore, 'parties', inviteCode));
+}
+
+export async function deletePartyRefSync(uid: string, inviteCode: string) {
+  if (!firebaseEnabled || !firestore) {
+    return;
+  }
+
+  await deleteDoc(doc(firestore, 'users', uid, 'partyRefs', inviteCode));
 }
 
 export function subscribePivoSync(inviteCode: string, onChange: (pivoState: PivoState) => void) {

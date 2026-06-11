@@ -1,5 +1,6 @@
 import { useMemo, useState } from 'react';
-import { Pressable, StyleSheet, Text, TextInput, View } from 'react-native';
+import { Alert, Pressable, Share, StyleSheet, Text, TextInput, View } from 'react-native';
+import { MaterialCommunityIcons } from '@expo/vector-icons';
 import { BackToOpk } from '../components/BackToOpk';
 import { PartyMember, PartyRef, PartyState } from '../types';
 
@@ -7,11 +8,14 @@ type PartyScreenProps = {
   onBack: () => void;
   party: PartyState;
   partyRefs: PartyRef[];
+  viewerUid: string | null;
   canSync: boolean;
   onChangeParty: (party: PartyState) => void;
   onCreateParty: () => void;
   onJoinParty: (inviteCode: string) => void;
   onSelectParty: (inviteCode: string) => void;
+  onLeaveParty: () => void;
+  onDeleteParty: () => void;
   isJoining: boolean;
   syncError: string | null;
   joinTargetCode: string | null;
@@ -21,11 +25,14 @@ export function PartyScreen({
   onBack,
   party,
   partyRefs,
+  viewerUid,
   canSync,
   onChangeParty,
   onCreateParty,
   onJoinParty,
   onSelectParty,
+  onLeaveParty,
+  onDeleteParty,
   isJoining,
   syncError,
   joinTargetCode,
@@ -33,6 +40,8 @@ export function PartyScreen({
   const [newMember, setNewMember] = useState('');
   const [inviteCode, setInviteCode] = useState('');
   const [editOpen, setEditOpen] = useState(false);
+  const isOwner = !!viewerUid && party.creatorUid === viewerUid;
+  const canLeave = !!viewerUid && !isOwner;
 
   const partyCards = useMemo(
     () => [
@@ -138,11 +147,6 @@ export function PartyScreen({
                   </Text>
                   <Text style={styles.partyRowCode}>{item.inviteCode}</Text>
                 </View>
-                <View style={styles.activeActions}>
-                  <Pressable style={styles.smallAction} onPress={() => setEditOpen((open) => !open)}>
-                    <Text style={styles.smallActionText}>{editOpen ? 'Zavřít' : 'Upravit'}</Text>
-                  </Pressable>
-                </View>
                 <View style={styles.partyMembers}>
                   {party.members.map((member) => (
                     <Pressable key={member.uid} style={styles.memberChip} onPress={() => removeMember(member)}>
@@ -193,6 +197,49 @@ export function PartyScreen({
                     </View>
                   </View>
                 ) : null}
+                <View style={styles.footerActions}>
+                  <Pressable style={styles.iconButton} onPress={() => setEditOpen((open) => !open)}>
+                    <MaterialCommunityIcons name={editOpen ? 'pencil-off' : 'pencil-outline'} size={20} color="#15251F" />
+                  </Pressable>
+                  <Pressable
+                    style={styles.iconButton}
+                    onPress={async () => {
+                      try {
+                        await Share.share({ message: `Kód party: ${item.inviteCode}` });
+                      } catch {
+                        // ignore
+                      }
+                    }}
+                  >
+                    <MaterialCommunityIcons name="share-variant-outline" size={20} color="#15251F" />
+                  </Pressable>
+                  {canLeave ? (
+                    <Pressable
+                      style={styles.iconButton}
+                      onPress={() =>
+                        Alert.alert('Opustit party', 'Opravdu chceš opustit tuto party?', [
+                          { text: 'Zrušit', style: 'cancel' },
+                          { text: 'Opustit', style: 'destructive', onPress: onLeaveParty },
+                        ])
+                      }
+                    >
+                      <MaterialCommunityIcons name="logout" size={20} color="#15251F" />
+                    </Pressable>
+                  ) : null}
+                  {isOwner ? (
+                    <Pressable
+                      style={[styles.iconButton, styles.iconButtonDanger]}
+                      onPress={() =>
+                        Alert.alert('Smazat party', 'Tím odstraníš sdílenou party pro všechny členy.', [
+                          { text: 'Zrušit', style: 'cancel' },
+                          { text: 'Smazat', style: 'destructive', onPress: onDeleteParty },
+                        ])
+                      }
+                    >
+                      <MaterialCommunityIcons name="delete-outline" size={20} color="#991B1B" />
+                    </Pressable>
+                  ) : null}
+                </View>
               </View>
             );
           })}
@@ -498,30 +545,30 @@ const styles = StyleSheet.create({
     gap: 12,
     padding: 14,
   },
-  activeActions: {
-    flexDirection: 'row',
-    gap: 8,
-    justifyContent: 'flex-start',
+  editPanel: {
+    gap: 12,
+    marginTop: 2,
   },
-  smallAction: {
+  footerActions: {
+    alignItems: 'center',
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    gap: 8,
+    marginTop: 2,
+  },
+  iconButton: {
     alignItems: 'center',
     backgroundColor: '#FBFAF8',
     borderColor: '#E1DBD2',
     borderRadius: 8,
     borderWidth: 1,
+    height: 38,
     justifyContent: 'center',
-    minHeight: 34,
-    maxWidth: '100%',
-    paddingHorizontal: 10,
+    width: 38,
   },
-  smallActionText: {
-    color: '#374151',
-    fontSize: 12,
-    fontWeight: '900',
-  },
-  editPanel: {
-    gap: 12,
-    marginTop: 2,
+  iconButtonDanger: {
+    backgroundColor: '#FFF1F1',
+    borderColor: '#F9B4B4',
   },
   shareButton: {
     alignItems: 'center',

@@ -24,7 +24,10 @@ import { PartyScreen } from './src/screens/PartyScreen';
 import { ProfilScreen } from './src/screens/ProfilScreen';
 import { ZpravyScreen } from './src/screens/ZpravyScreen';
 import {
+  deletePartyRefSync,
+  deletePartySync,
   fetchPartySync,
+  removePartyMemberSync,
   savePartySync,
   savePartyRefSync,
   savePivoSync,
@@ -57,6 +60,7 @@ const defaultParty: PartyState = {
     { uid: 'legacy-pavel', displayName: 'Pavel', source: 'legacy' },
   ],
   inviteCode: 'OPK-VYSKOV',
+  creatorUid: null,
 };
 
 type PartySyncMode = 'ready' | 'joining';
@@ -145,6 +149,7 @@ function normalizeParty(value: Partial<PartyState> | null): PartyState {
     name: typeof value?.name === 'string' ? value.name : defaultParty.name,
     city: typeof value?.city === 'string' ? value.city : defaultParty.city,
     members: normalizePartyMembers(value?.members),
+    creatorUid: typeof value?.creatorUid === 'string' && value.creatorUid.trim() ? value.creatorUid : null,
     inviteCode:
       typeof value?.inviteCode === 'string' && value.inviteCode.trim()
         ? value.inviteCode
@@ -474,6 +479,7 @@ export default function App() {
       ...party,
       inviteCode: makePartyCode(party.name, party.city),
       members: [creator],
+      creatorUid: firebaseUser?.uid ?? null,
     };
 
     setParty(nextParty);
@@ -517,6 +523,58 @@ export default function App() {
       .catch((error: unknown) => {
         setPartySyncError(error instanceof Error ? error.message : 'Nepovedlo se načíst party z Firebase.');
       });
+  };
+
+  const getNextPartyAfterCurrent = async () => {
+    const nextRef = partyRefs.find((ref) => ref.inviteCode !== party.inviteCode);
+
+    if (!nextRef) {
+      setParty(defaultParty);
+      return;
+    }
+
+    const nextParty = await fetchPartySync(nextRef.inviteCode);
+
+    if (!nextParty) {
+      setParty(defaultParty);
+      return;
+    }
+
+    setParty(nextParty);
+  };
+
+  const handleLeaveParty = async () => {
+    if (!firebaseUser) {
+      return;
+    }
+
+    const currentMember = party.members.find((member) => member.uid === firebaseUser.uid);
+
+    if (!currentMember) {
+      return;
+    }
+
+    try {
+      await removePartyMemberSync(party.inviteCode, currentMember);
+      await deletePartyRefSync(firebaseUser.uid, party.inviteCode);
+      await getNextPartyAfterCurrent();
+    } catch (error: unknown) {
+      setPartySyncError(error instanceof Error ? error.message : 'Nepovedlo se opustit party.');
+    }
+  };
+
+  const handleDeleteParty = async () => {
+    if (!firebaseUser || party.creatorUid !== firebaseUser.uid) {
+      return;
+    }
+
+    try {
+      await deletePartySync(party.inviteCode);
+      await deletePartyRefSync(firebaseUser.uid, party.inviteCode);
+      await getNextPartyAfterCurrent();
+    } catch (error: unknown) {
+      setPartySyncError(error instanceof Error ? error.message : 'Nepovedlo se smazat party.');
+    }
   };
 
   if (showAuthGate) {
@@ -602,11 +660,14 @@ export default function App() {
               onBack={() => setSelectedSection(selectedActivity)}
               party={party}
               partyRefs={partyRefs}
+              viewerUid={firebaseUser?.uid ?? null}
               canSync={firebaseEnabled && !!firebaseUser}
               onChangeParty={setParty}
               onCreateParty={handleCreateParty}
               onJoinParty={handleJoinParty}
               onSelectParty={handleSelectParty}
+              onLeaveParty={handleLeaveParty}
+              onDeleteParty={handleDeleteParty}
               isJoining={partySyncMode === 'joining'}
               syncError={partySyncError}
               joinTargetCode={joinTargetCode}

@@ -40,6 +40,7 @@ export type PartyState = {
   city: string;
   members: PartyMember[];
   inviteCode: string;
+  creatorUid: string | null;
 };
 
 export type PartyRef = {
