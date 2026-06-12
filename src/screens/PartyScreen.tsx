@@ -47,8 +47,6 @@ export function PartyScreen({
   const activePartyCode = expandedPartyCode ?? party.inviteCode;
   const activePartyLoaded = activePartyCode === party.inviteCode;
   const activePartyRef = partyRefs.find((item) => item.inviteCode === activePartyCode);
-  const isOwner = !!viewerUid && activePartyLoaded && party.creatorUid === viewerUid;
-  const canLeave = !!viewerUid && activePartyLoaded && !isOwner;
   const ownerUid = activePartyLoaded ? party.creatorUid : activePartyRef?.creatorUid ?? null;
   const isKnownOwner = !!viewerUid && !!ownerUid && ownerUid === viewerUid;
   const canKnownLeave = !!viewerUid && !!ownerUid && ownerUid !== viewerUid;
@@ -160,51 +158,6 @@ export function PartyScreen({
     setNewMember('');
   };
 
-  const openPartyActions = () => {
-    const actions: Array<{ text: string; style?: 'default' | 'destructive' | 'cancel'; onPress?: () => void }> = [
-      {
-        text: editOpen ? 'Upravit' : 'Upravit party',
-        onPress: editOpen ? undefined : startEditing,
-      },
-      {
-        text: 'Sdílet kód',
-        onPress: async () => {
-          try {
-            await Share.share({ message: `Kód party: ${activePartyCode}` });
-          } catch {
-            // ignore
-          }
-        },
-      },
-    ];
-
-    if (canKnownLeave) {
-      actions.push({
-        text: 'Opustit party',
-        style: 'destructive',
-        onPress: () =>
-          Alert.alert('Opustit party', 'Opravdu chceš opustit tuto party?', [
-            { text: 'Zrušit', style: 'cancel' },
-            { text: 'Opustit', style: 'destructive', onPress: onLeaveParty },
-          ]),
-      });
-    }
-
-    if (isKnownOwner) {
-      actions.push({
-        text: 'Smazat party',
-        style: 'destructive',
-        onPress: () =>
-          Alert.alert('Smazat party', 'Tím odstraníš sdílenou party pro všechny členy.', [
-            { text: 'Zrušit', style: 'cancel' },
-            { text: 'Smazat', style: 'destructive', onPress: onDeleteParty },
-          ]),
-      });
-    }
-
-    Alert.alert('Party', '', [...actions, { text: 'Zrušit', style: 'cancel' }]);
-  };
-
   return (
     <>
       <View style={styles.sectionHeader}>
@@ -256,13 +209,44 @@ export function PartyScreen({
                     <View style={styles.iconSlot}>
                       <Pressable
                         style={styles.iconButton}
-                        onPress={openPartyActions}
+                        onPress={async () => {
+                          try {
+                            await Share.share({ message: `Kód party: ${item.inviteCode}` });
+                          } catch {
+                            // ignore
+                          }
+                        }}
                       >
-                        <MaterialCommunityIcons name="dots-vertical" size={20} color="#15251F" />
+                        <MaterialCommunityIcons name="share-variant-outline" size={20} color="#15251F" />
                       </Pressable>
                     </View>
                     <View style={styles.iconSlot}>
-                      <View style={styles.iconButtonPlaceholder} />
+                      <Pressable
+                        disabled={!canKnownLeave}
+                        style={[styles.iconButton, !canKnownLeave && styles.iconButtonDisabled]}
+                        onPress={() =>
+                          Alert.alert('Opustit party', 'Opravdu chceš opustit tuto party?', [
+                            { text: 'Zrušit', style: 'cancel' },
+                            { text: 'Opustit', style: 'destructive', onPress: onLeaveParty },
+                          ])
+                        }
+                      >
+                        <MaterialCommunityIcons name="logout" size={20} color="#15251F" />
+                      </Pressable>
+                    </View>
+                    <View style={styles.iconSlot}>
+                      <Pressable
+                        disabled={!isKnownOwner}
+                        style={[styles.iconButton, styles.iconButtonDanger, !isKnownOwner && styles.iconButtonDisabled]}
+                        onPress={() =>
+                          Alert.alert('Smazat party', 'Tím odstraníš sdílenou party pro všechny členy.', [
+                            { text: 'Zrušit', style: 'cancel' },
+                            { text: 'Smazat', style: 'destructive', onPress: onDeleteParty },
+                          ])
+                        }
+                      >
+                        <MaterialCommunityIcons name="delete-outline" size={20} color="#991B1B" />
+                      </Pressable>
                     </View>
                   </View>
                 </View>
@@ -729,10 +713,8 @@ const styles = StyleSheet.create({
     backgroundColor: '#FFF1F1',
     borderColor: '#F9B4B4',
   },
-  iconButtonPlaceholder: {
-    height: 36,
-    opacity: 0,
-    width: 36,
+  iconButtonDisabled: {
+    opacity: 0.35,
   },
   shareButton: {
     alignItems: 'center',
