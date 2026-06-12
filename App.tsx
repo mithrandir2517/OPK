@@ -1,6 +1,6 @@
 import { StatusBar } from 'expo-status-bar';
 import { MaterialCommunityIcons } from '@expo/vector-icons';
-import { useEffect, useMemo, useState, type ReactNode } from 'react';
+import { useEffect, useMemo, useRef, useState, type ReactNode } from 'react';
 import {
   LayoutAnimation,
   Platform,
@@ -28,10 +28,13 @@ import { ZpravyScreen } from './src/screens/ZpravyScreen';
 import {
   deletePartyRefSync,
   deletePartySync,
+  deletePushTokenSync,
   fetchPartySync,
+  recordPartyEventSync,
   removePartyMemberSync,
   savePartySync,
   savePartyRefSync,
+  savePushTokenSync,
   savePivoSync,
   subscribeUserPartyRefs,
   subscribePartySync,
@@ -40,6 +43,7 @@ import {
 import { saveActivityVoteSync, subscribeActivityVotesSync } from './src/backend/pollSync';
 import { loadJson, saveJson, storageKeys } from './src/storage/localStorage';
 import { ActivityKey, ActivityVote, PartyMember, PartyRef, PartyState, PivoState, SectionKey, UserProfile } from './src/types';
+import { registerForPushNotificationsAsync } from './src/backend/pushNotifications';
 import {
   firebaseAuth,
   firebaseEnabled,
@@ -237,6 +241,10 @@ export default function App() {
   const [expandedPartyCode, setExpandedPartyCode] = useState<string | null>(null);
   const [firebaseUser, setFirebaseUser] = useState<null | { uid: string; displayName: string; email: string | null; photoURL: string | null }>(null);
   const googleClientIdReady = !!googleWebClientId;
+  const pivoReplySnapshot = useRef({ place: defaultPivoState.place, time: defaultPivoState.time, note: defaultPivoState.note, reply: defaultPivoState.reply, arrival: defaultPivoState.arrival });
+  const pivoSuppressEvent = useRef(false);
+  const pushOwnerUid = useRef<string | null>(null);
+  const pushTokenRef = useRef<string | null>(null);
 
   useEffect(() => {
     let mounted = true;
@@ -328,6 +336,45 @@ export default function App() {
         : current,
     );
   }, [firebaseUser, profile.name, storageReady]);
+
+  useEffect(() => {
+    if (!storageReady || !firebaseEnabled) {
+      return;
+    }
+
+    let cancelled = false;
+
+    const syncPushToken = async () => {
+      if (!firebaseUser || !profile.notificationsEnabled) {
+        if (pushTokenRef.current && pushOwnerUid.current) {
+          await deletePushTokenSync(pushOwnerUid.current, pushTokenRef.current);
+        }
+
+        pushOwnerUid.current = null;
+        pushTokenRef.current = null;
+        return;
+      }
+
+      const token = await registerForPushNotificationsAsync();
+
+      if (!token || cancelled) {
+        return;
+      }
+
+      pushOwnerUid.current = firebaseUser.uid;
+      pushTokenRef.current = token;
+      await saveJson(storageKeys.pushToken, token);
+      await savePushTokenSync(firebaseUser.uid, token, true);
+    };
+
+    void syncPushToken().catch((error: unknown) => {
+      console.error('Push registration failed', error);
+    });
+
+    return () => {
+      cancelled = true;
+    };
+  }, [firebaseUser, firebaseEnabled, profile.notificationsEnabled, storageReady]);
 
   useEffect(() => {
     if (!storageReady || !firebaseUser) {
@@ -636,6 +683,8 @@ export default function App() {
               accent={activeActivity.accent}
               partyCode={activePartyCode}
               canSync={firebaseEnabled && !!firebaseUser}
+              viewerId={firebaseUser?.uid ?? null}
+              viewerName={firebaseUser?.displayName ?? profile.name}
             />
           )}
           {selectedSection === 'obed' && (
@@ -831,6 +880,7 @@ function ObedScreen({
   const [selectedRestaurant, setSelectedRestaurant] = useState('');
   const [remoteVotes, setRemoteVotes] = useState<ActivityVote[]>([]);
   const [storageReady, setStorageReady] = useState(false);
+  const lastRestaurantRef = useRef('');
 
   const toggleRestaurant = (restaurantName: string) => {
     setExpandedRestaurants((current) =>
@@ -849,6 +899,7 @@ function ObedScreen({
       }
 
       setSelectedRestaurant(typeof savedChoice === 'string' ? savedChoice : '');
+      lastRestaurantRef.current = typeof savedChoice === 'string' ? savedChoice : '';
       setStorageReady(true);
     });
 
@@ -874,6 +925,11 @@ function ObedScreen({
 
   useEffect(() => {
     if (!storageReady || !canSync || !viewerId || !selectedRestaurant) {
+      lastRestaurantRef.current = selectedRestaurant;
+      return;
+    }
+
+    if (lastRestaurantRef.current === selectedRestaurant) {
       return;
     }
 
@@ -883,6 +939,18 @@ function ObedScreen({
       choice: selectedRestaurant,
       updatedAt: new Date().toISOString(),
     });
+
+    void recordPartyEventSync({
+      partyCode,
+      type: 'obed.vote',
+      activity: 'obed',
+      actorUid: viewerId,
+      actorName: viewerName,
+      title: `${viewerName} hlasoval pro ${selectedRestaurant}`,
+      body: `Oběd: ${viewerName} hlasoval pro ${selectedRestaurant}.`,
+    });
+
+    lastRestaurantRef.current = selectedRestaurant;
   }, [canSync, partyCode, selectedRestaurant, storageReady, viewerId, viewerName]);
 
   const visibleVotes: ActivityVote[] = canSync
@@ -1034,10 +1102,14 @@ function PivoScreen({
   accent,
   partyCode,
   canSync,
+  viewerId,
+  viewerName,
 }: {
   accent: string;
   partyCode: string;
   canSync: boolean;
+  viewerId: string | null;
+  viewerName: string;
 }) {
   const [place, setPlace] = useState(defaultPivoState.place);
   const [time, setTime] = useState(defaultPivoState.time);
@@ -1047,6 +1119,13 @@ function PivoScreen({
   const [editingPlan, setEditingPlan] = useState(false);
   const [storageReady, setStorageReady] = useState(false);
   const arrivalOptions = ['Teď', 'Za 15 min', 'Za 30 min', 'V 19:30'];
+  const planSnapshot = useRef({
+    place: defaultPivoState.place,
+    time: defaultPivoState.time,
+    note: defaultPivoState.note,
+  });
+  const pivoSnapshot = useRef({ reply: defaultPivoState.reply, arrival: defaultPivoState.arrival });
+  const suppressPivoEvent = useRef(false);
 
   useEffect(() => {
     let mounted = true;
@@ -1062,6 +1141,15 @@ function PivoScreen({
       setNote(nextState.note);
       setReply(nextState.reply);
       setArrival(nextState.arrival);
+      planSnapshot.current = {
+        place: nextState.place,
+        time: nextState.time,
+        note: nextState.note,
+      };
+      pivoSnapshot.current = {
+        reply: nextState.reply,
+        arrival: nextState.arrival,
+      };
       setStorageReady(true);
     });
 
@@ -1087,6 +1175,7 @@ function PivoScreen({
       setNote(remoteState.note);
       setReply(remoteState.reply);
       setArrival(remoteState.arrival);
+      suppressPivoEvent.current = true;
     });
 
     return unsubscribe;
@@ -1097,6 +1186,73 @@ function PivoScreen({
       void savePivoSync(partyCode, { place, time, note, reply, arrival });
     }
   }, [arrival, canSync, note, partyCode, place, reply, storageReady, time]);
+
+  const handleSavePlan = () => {
+    const nextPlan = { place, time, note };
+    const previousPlan = planSnapshot.current;
+
+    if (
+      canSync &&
+      viewerId &&
+      (previousPlan.place !== nextPlan.place || previousPlan.time !== nextPlan.time || previousPlan.note !== nextPlan.note)
+    ) {
+      void recordPartyEventSync({
+        partyCode,
+        type: 'pivo.plan',
+        activity: 'pivo',
+        actorUid: viewerId,
+        actorName: viewerName,
+        title: `${viewerName} upravil pivo plán`,
+        body: `Pivo: ${viewerName} upravil plán na ${nextPlan.place || 'místo'} · ${nextPlan.time || 'čas'} · ${
+          nextPlan.note || 'bez poznámky'
+        }.`,
+      });
+    }
+
+    planSnapshot.current = nextPlan;
+    setEditingPlan(false);
+  };
+
+  useEffect(() => {
+    if (!storageReady || !canSync || !viewerId) {
+      pivoSnapshot.current = { reply, arrival };
+      return;
+    }
+
+    if (suppressPivoEvent.current) {
+      suppressPivoEvent.current = false;
+      pivoSnapshot.current = { reply, arrival };
+      return;
+    }
+
+    const previous = pivoSnapshot.current;
+
+    if (previous.reply !== reply) {
+      void recordPartyEventSync({
+        partyCode,
+        type: 'pivo.reply',
+        activity: 'pivo',
+        actorUid: viewerId,
+        actorName: viewerName,
+        title: `${viewerName} odpověděl na pivo`,
+        body: `Pivo: ${viewerName} změnil odpověď na ${reply}.`,
+      });
+    }
+
+    if (reply === 'Jdu' && previous.arrival !== arrival) {
+      void recordPartyEventSync({
+        partyCode,
+        type: 'pivo.arrival',
+        activity: 'pivo',
+        actorUid: viewerId,
+        actorName: viewerName,
+        title: `${viewerName} změnil čas příchodu`,
+        body: `Pivo: ${viewerName} přijde ${arrival}.`,
+      });
+    }
+
+    pivoSnapshot.current = { reply, arrival };
+  }, [arrival, canSync, partyCode, reply, storageReady, viewerId, viewerName]);
 
   return (
     <>
@@ -1166,7 +1322,7 @@ function PivoScreen({
               </View>
               <Pressable
                 style={[styles.primaryButton, styles.fullWidthButton]}
-                onPress={() => setEditingPlan(false)}
+                onPress={handleSavePlan}
               >
                 <MaterialCommunityIcons name="check" size={18} color="#1F2937" />
                 <Text style={styles.primaryButtonText}>Uložit plán</Text>

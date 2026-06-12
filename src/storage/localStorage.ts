@@ -4,6 +4,7 @@ export const storageKeys = {
   obedVote: 'opk:obedVote',
   memories: 'opk:memories',
   party: 'opk:party',
+  pushToken: 'opk:pushToken',
   pivoState: 'opk:pivoState',
   profile: 'opk:profile',
   koloVote: 'opk:koloVote',

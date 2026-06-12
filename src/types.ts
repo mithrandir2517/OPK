@@ -35,6 +35,28 @@ export type UserProfile = {
   notificationsEnabled: boolean;
 };
 
+export type PartyEventType =
+  | 'obed.vote'
+  | 'pivo.plan'
+  | 'pivo.reply'
+  | 'pivo.arrival'
+  | 'kolo.vote'
+  | 'kolo.arrival'
+  | 'party.created'
+  | 'party.joined';
+
+export type PartyEvent = {
+  id: string;
+  partyCode: string;
+  type: PartyEventType;
+  title: string;
+  body: string;
+  actorUid: string | null;
+  actorName: string;
+  activity?: ActivityKey;
+  createdAt: string;
+};
+
 export type PartyState = {
   name: string;
   city: string;

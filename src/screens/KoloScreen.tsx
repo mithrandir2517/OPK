@@ -1,6 +1,7 @@
 import { MaterialCommunityIcons } from '@expo/vector-icons';
-import { useEffect, useMemo, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import { Pressable, StyleSheet, Text, View } from 'react-native';
+import { recordPartyEventSync } from '../backend/opkSync';
 import { saveActivityVoteSync, subscribeActivityVotesSync } from '../backend/pollSync';
 import { ActivityPanel } from '../components/ActivityPanel';
 import { loadJson, saveJson, storageKeys } from '../storage/localStorage';
@@ -39,6 +40,7 @@ export function KoloScreen({ accent, partyCode, canSync, viewerId, viewerName }:
   const [arrival, setArrival] = useState(defaultVote.arrival);
   const [remoteVotes, setRemoteVotes] = useState<ActivityVote[]>([]);
   const [storageReady, setStorageReady] = useState(false);
+  const voteSnapshot = useRef<KoloVoteState>(defaultVote);
 
   useEffect(() => {
     let mounted = true;
@@ -51,6 +53,7 @@ export function KoloScreen({ accent, partyCode, canSync, viewerId, viewerName }:
       const nextVote = normalizeVote(savedVote);
       setChoice(nextVote.choice);
       setArrival(nextVote.arrival);
+      voteSnapshot.current = nextVote;
       setStorageReady(true);
     });
 
@@ -76,7 +79,34 @@ export function KoloScreen({ accent, partyCode, canSync, viewerId, viewerName }:
 
   useEffect(() => {
     if (!storageReady || !canSync || !viewerId) {
+      voteSnapshot.current = { choice, arrival };
       return;
+    }
+
+    const previous = voteSnapshot.current;
+
+    if (previous.choice !== choice) {
+      void recordPartyEventSync({
+        partyCode,
+        type: 'kolo.vote',
+        activity: 'kolo',
+        actorUid: viewerId,
+        actorName: viewerName,
+        title: `${viewerName} hlasoval pro kolo`,
+        body: `Kolo: ${viewerName} změnil hlas na ${choice}.`,
+      });
+    }
+
+    if (choice === 'Jedu' && previous.arrival !== arrival) {
+      void recordPartyEventSync({
+        partyCode,
+        type: 'kolo.arrival',
+        activity: 'kolo',
+        actorUid: viewerId,
+        actorName: viewerName,
+        title: `${viewerName} změnil čas kola`,
+        body: `Kolo: ${viewerName} dorazí ${arrival}.`,
+      });
     }
 
     void saveActivityVoteSync(partyCode, 'kolo', {
@@ -86,6 +116,7 @@ export function KoloScreen({ accent, partyCode, canSync, viewerId, viewerName }:
       arrival: choice === 'Jedu' ? arrival : undefined,
       updatedAt: new Date().toISOString(),
     });
+    voteSnapshot.current = { choice, arrival };
   }, [arrival, canSync, choice, partyCode, storageReady, viewerId, viewerName]);
 
   const visibleVotes: ActivityVote[] = canSync

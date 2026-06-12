@@ -15,7 +15,7 @@ import {
   updateDoc,
 } from 'firebase/firestore';
 import { firestore, firebaseEnabled } from './firebase';
-import { PartyMember, PartyRef, PartyState, PivoState, SavedMemory } from '../types';
+import { PartyEvent, PartyMember, PartyRef, PartyState, PivoState, SavedMemory } from '../types';
 
 function normalizePartyMembers(value: unknown): PartyMember[] {
   if (!Array.isArray(value)) {
@@ -229,6 +229,42 @@ export async function savePartyRefSync(uid: string, party: PartyState) {
     },
     { merge: true },
   );
+}
+
+export async function savePushTokenSync(uid: string, token: string, enabled: boolean) {
+  if (!firebaseEnabled || !firestore) {
+    return;
+  }
+
+  await setDoc(
+    doc(firestore, 'users', uid, 'pushTokens', token),
+    {
+      token,
+      enabled,
+      platform: 'android',
+      updatedAt: new Date().toISOString(),
+    },
+    { merge: true },
+  );
+}
+
+export async function deletePushTokenSync(uid: string, token: string) {
+  if (!firebaseEnabled || !firestore) {
+    return;
+  }
+
+  await deleteDoc(doc(firestore, 'users', uid, 'pushTokens', token));
+}
+
+export async function recordPartyEventSync(event: Omit<PartyEvent, 'id' | 'createdAt'>) {
+  if (!firebaseEnabled || !firestore) {
+    return;
+  }
+
+  await addDoc(collection(firestore, 'parties', event.partyCode, 'events'), {
+    ...event,
+    createdAt: new Date().toISOString(),
+  });
 }
 
 export async function removePartyMemberSync(inviteCode: string, member: PartyMember) {
