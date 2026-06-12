@@ -42,9 +42,18 @@ exports.sendPartyEventPush = onDocumentCreated('parties/{partyCode}/events/{even
   const actorUid = typeof payload.actorUid === 'string' && payload.actorUid.trim() ? payload.actorUid.trim() : null;
   const actorName = typeof payload.actorName === 'string' && payload.actorName.trim() ? payload.actorName.trim() : 'Někdo';
 
+  console.log('sendPartyEventPush received', {
+    partyCode,
+    eventId: event.params.eventId,
+    type: payload.type,
+    actorUid,
+    actorName,
+  });
+
   const partyDoc = await admin.firestore().collection('parties').doc(partyCode).get();
 
   if (!partyDoc.exists) {
+    console.log('sendPartyEventPush missing party doc', { partyCode });
     return;
   }
 
@@ -60,10 +69,18 @@ exports.sendPartyEventPush = onDocumentCreated('parties/{partyCode}/events/{even
   const creatorUid = typeof partyData.creatorUid === 'string' && partyData.creatorUid.trim() ? partyData.creatorUid.trim() : null;
   const recipientUids = dedupeStrings([creatorUid, ...memberUids]).filter((uid) => uid !== actorUid);
 
+  console.log('sendPartyEventPush recipients', {
+    partyCode,
+    creatorUid,
+    memberCount: memberUids.length,
+    recipientUids,
+  });
+
   const tokenLists = await Promise.all(recipientUids.map((uid) => loadRecipientTokens(uid)));
   const tokens = dedupeStrings(tokenLists.flat());
 
   if (tokens.length === 0) {
+    console.log('sendPartyEventPush no expo tokens found', { partyCode, recipientUids });
     return;
   }
 
@@ -79,5 +96,12 @@ exports.sendPartyEventPush = onDocumentCreated('parties/{partyCode}/events/{even
     },
   }));
 
+  console.log('sendPartyEventPush sending messages', {
+    partyCode,
+    tokenCount: tokens.length,
+    messageCount: messages.length,
+  });
+
   await sendExpoPushNotifications(messages);
+  console.log('sendPartyEventPush sent', { partyCode, messageCount: messages.length });
 });
