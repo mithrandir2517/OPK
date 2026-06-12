@@ -176,7 +176,7 @@ export function PartyScreen({
                     <Pressable key={member.uid} style={styles.memberChip} onPress={() => removeMember(member)}>
                       <View style={styles.memberChipBody}>
                         <Text style={styles.memberChipText}>{member.displayName}</Text>
-                        <Text style={styles.memberChipMeta}>{member.email ?? member.uid}</Text>
+                        {editOpen ? <Text style={styles.memberChipMeta}>{member.email ?? member.uid}</Text> : null}
                       </View>
                       <Text style={styles.memberChipRemove}>×</Text>
                     </Pressable>
@@ -403,7 +403,7 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     flexWrap: 'wrap',
     gap: 8,
-    marginTop: 16,
+    marginTop: 10,
   },
   partyRowExpanded: {
     alignItems: 'stretch',
@@ -416,11 +416,11 @@ const styles = StyleSheet.create({
     backgroundColor: '#F4F1EA',
     borderRadius: 8,
     flexDirection: 'row',
-    gap: 8,
+    gap: 6,
     overflow: 'hidden',
     maxWidth: '100%',
-    paddingHorizontal: 10,
-    paddingVertical: 7,
+    paddingHorizontal: 9,
+    paddingVertical: 6,
   },
   memberChipBody: {
     flexShrink: 1,
@@ -428,14 +428,14 @@ const styles = StyleSheet.create({
   },
   memberChipText: {
     color: '#15251F',
-    fontSize: 13,
+    fontSize: 12,
     fontWeight: '900',
   },
   memberChipMeta: {
     color: '#6B7280',
-    fontSize: 10,
+    fontSize: 9,
     fontWeight: '700',
-    lineHeight: 14,
+    lineHeight: 12,
     marginTop: 1,
   },
   memberChipRemove: {
@@ -589,7 +589,7 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     flexWrap: 'wrap',
     gap: 8,
-    marginTop: 2,
+    marginTop: 0,
   },
   iconButton: {
     alignItems: 'center',
@@ -597,9 +597,9 @@ const styles = StyleSheet.create({
     borderColor: '#E1DBD2',
     borderRadius: 8,
     borderWidth: 1,
-    height: 38,
+    height: 36,
     justifyContent: 'center',
-    width: 38,
+    width: 36,
   },
   iconButtonDanger: {
     backgroundColor: '#FFF1F1',
