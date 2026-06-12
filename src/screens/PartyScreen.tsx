@@ -46,8 +46,12 @@ export function PartyScreen({
   const [displayPartyCodes, setDisplayPartyCodes] = useState<string[]>([]);
   const activePartyCode = expandedPartyCode ?? party.inviteCode;
   const activePartyLoaded = activePartyCode === party.inviteCode;
+  const activePartyRef = partyRefs.find((item) => item.inviteCode === activePartyCode);
   const isOwner = !!viewerUid && activePartyLoaded && party.creatorUid === viewerUid;
   const canLeave = !!viewerUid && activePartyLoaded && !isOwner;
+  const ownerUid = activePartyLoaded ? party.creatorUid : activePartyRef?.creatorUid ?? null;
+  const isKnownOwner = !!viewerUid && !!ownerUid && ownerUid === viewerUid;
+  const canKnownLeave = !!viewerUid && !!ownerUid && ownerUid !== viewerUid;
 
   useEffect(() => {
     if (!editOpen) {
@@ -219,7 +223,7 @@ export function PartyScreen({
                       </Pressable>
                     </View>
                     <View style={styles.iconSlot}>
-                      {activePartyLoaded && canLeave ? (
+                      {canKnownLeave ? (
                         <Pressable
                           style={styles.iconButton}
                           onPress={() =>
@@ -236,7 +240,7 @@ export function PartyScreen({
                       )}
                     </View>
                     <View style={styles.iconSlot}>
-                      {activePartyLoaded && isOwner ? (
+                      {isKnownOwner ? (
                         <Pressable
                           style={[styles.iconButton, styles.iconButtonDanger]}
                           onPress={() =>

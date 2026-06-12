@@ -105,6 +105,7 @@ function mapPartyRefData(data: Record<string, unknown>): PartyRef | null {
     city: data.city,
     memberCount: data.memberCount,
     updatedAt: data.updatedAt,
+    creatorUid: typeof data.creatorUid === 'string' && data.creatorUid.trim() ? data.creatorUid : null,
   };
 }
 
@@ -224,6 +225,7 @@ export async function savePartyRefSync(uid: string, party: PartyState) {
       city: party.city,
       memberCount: party.members.length,
       updatedAt: new Date().toISOString(),
+      creatorUid: party.creatorUid,
     },
     { merge: true },
   );

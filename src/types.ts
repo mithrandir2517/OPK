@@ -49,6 +49,7 @@ export type PartyRef = {
   city: string;
   memberCount: number;
   updatedAt: string;
+  creatorUid?: string | null;
 };
 
 export type PartyMember = {
