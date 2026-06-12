@@ -27,11 +27,20 @@ export async function registerForPushNotificationsAsync() {
     return null;
   }
 
-  const projectId = Constants?.expoConfig?.extra?.eas?.projectId ?? Constants?.easConfig?.projectId;
+  const projectId =
+    process.env.EXPO_PUBLIC_EAS_PROJECT_ID ??
+    Constants?.expoConfig?.extra?.eas?.projectId ??
+    Constants?.easConfig?.projectId;
 
   if (!projectId) {
+    console.warn('Missing Expo projectId for push registration');
     return null;
   }
 
-  return (await Notifications.getExpoPushTokenAsync({ projectId })).data;
+  try {
+    return (await Notifications.getExpoPushTokenAsync({ projectId })).data;
+  } catch (error) {
+    console.error('Expo push token request failed', error);
+    return null;
+  }
 }
