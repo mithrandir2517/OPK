@@ -1,4 +1,4 @@
-import { useMemo, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import { Alert, Pressable, Share, StyleSheet, Text, TextInput, View } from 'react-native';
 import { MaterialCommunityIcons } from '@expo/vector-icons';
 import { BackToOpk } from '../components/BackToOpk';
@@ -40,8 +40,15 @@ export function PartyScreen({
   const [newMember, setNewMember] = useState('');
   const [inviteCode, setInviteCode] = useState('');
   const [editOpen, setEditOpen] = useState(false);
+  const [draftParty, setDraftParty] = useState(party);
   const isOwner = !!viewerUid && party.creatorUid === viewerUid;
   const canLeave = !!viewerUid && !isOwner;
+
+  useEffect(() => {
+    if (!editOpen) {
+      setDraftParty(party);
+    }
+  }, [editOpen, party]);
 
   const partyCards = useMemo(
     () => [
@@ -64,7 +71,7 @@ export function PartyScreen({
   );
 
   const updateParty = (nextParty: Partial<PartyState>) => {
-    onChangeParty({ ...party, ...nextParty });
+    setDraftParty((current) => ({ ...current, ...nextParty }));
   };
 
   const updateName = (name: string) => {
@@ -74,7 +81,7 @@ export function PartyScreen({
   const addMember = () => {
     const member = newMember.trim();
 
-    if (!member || party.members.some((item) => item.displayName.toLowerCase() === member.toLowerCase())) {
+    if (!member || draftParty.members.some((item) => item.displayName.toLowerCase() === member.toLowerCase())) {
       return;
     }
 
@@ -84,16 +91,33 @@ export function PartyScreen({
       source: 'manual',
     };
 
-    updateParty({ members: [...party.members, customMember] });
+    updateParty({ members: [...draftParty.members, customMember] });
     setNewMember('');
   };
 
   const removeMember = (member: PartyMember) => {
-    if (party.members.length <= 1) {
+    if (draftParty.members.length <= 1) {
       return;
     }
 
-    updateParty({ members: party.members.filter((item) => item.uid !== member.uid) });
+    updateParty({ members: draftParty.members.filter((item) => item.uid !== member.uid) });
+  };
+
+  const startEditing = () => {
+    setDraftParty(party);
+    setEditOpen(true);
+  };
+
+  const cancelEditing = () => {
+    setDraftParty(party);
+    setNewMember('');
+    setEditOpen(false);
+  };
+
+  const saveEditing = () => {
+    onChangeParty(draftParty);
+    setEditOpen(false);
+    setNewMember('');
   };
 
   return (
@@ -143,12 +167,12 @@ export function PartyScreen({
                 <View style={styles.partyRowCopy}>
                   <Text style={styles.partyRowTitle}>{isJoining ? 'Načítám partu…' : item.name || 'Bez názvu'}</Text>
                   <Text style={styles.partyRowMeta}>
-                    {isJoining ? 'Čekám na sdílená data z Firebase.' : `${item.city || 'bez města'} · ${party.members.length} členové`}
+                    {isJoining ? 'Čekám na sdílená data z Firebase.' : `${item.city || 'bez města'} · ${draftParty.members.length} členové`}
                   </Text>
                   <Text style={styles.partyRowCode}>{item.inviteCode}</Text>
                 </View>
                 <View style={styles.partyMembers}>
-                  {party.members.map((member) => (
+                  {draftParty.members.map((member) => (
                     <Pressable key={member.uid} style={styles.memberChip} onPress={() => removeMember(member)}>
                       <View style={styles.memberChipBody}>
                         <Text style={styles.memberChipText}>{member.displayName}</Text>
@@ -163,7 +187,7 @@ export function PartyScreen({
                     <View style={styles.formField}>
                       <Text style={styles.inputLabel}>Název party</Text>
                       <TextInput
-                        value={party.name}
+                        value={draftParty.name}
                         onChangeText={updateName}
                         placeholder="Parta Vyškov"
                         placeholderTextColor="#9CA3AF"
@@ -173,7 +197,7 @@ export function PartyScreen({
                     <View style={styles.formField}>
                       <Text style={styles.inputLabel}>Město</Text>
                       <TextInput
-                        value={party.city}
+                        value={draftParty.city}
                         onChangeText={(city) => updateParty({ city })}
                         placeholder="Vyškov"
                         placeholderTextColor="#9CA3AF"
@@ -198,9 +222,20 @@ export function PartyScreen({
                   </View>
                 ) : null}
                 <View style={styles.footerActions}>
-                  <Pressable style={styles.iconButton} onPress={() => setEditOpen((open) => !open)}>
-                    <MaterialCommunityIcons name={editOpen ? 'pencil-off' : 'pencil-outline'} size={20} color="#15251F" />
-                  </Pressable>
+                  {editOpen ? (
+                    <>
+                      <Pressable style={styles.iconButton} onPress={saveEditing}>
+                        <MaterialCommunityIcons name="check" size={20} color="#15251F" />
+                      </Pressable>
+                      <Pressable style={styles.iconButton} onPress={cancelEditing}>
+                        <MaterialCommunityIcons name="close" size={20} color="#15251F" />
+                      </Pressable>
+                    </>
+                  ) : (
+                    <Pressable style={styles.iconButton} onPress={startEditing}>
+                      <MaterialCommunityIcons name="pencil-outline" size={20} color="#15251F" />
+                    </Pressable>
+                  )}
                   <Pressable
                     style={styles.iconButton}
                     onPress={async () => {
