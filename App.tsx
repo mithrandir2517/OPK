@@ -2,6 +2,7 @@ import { StatusBar } from 'expo-status-bar';
 import { MaterialCommunityIcons } from '@expo/vector-icons';
 import { useEffect, useMemo, useState, type ReactNode } from 'react';
 import {
+  LayoutAnimation,
   Platform,
   Pressable,
   SafeAreaView,
@@ -9,6 +10,7 @@ import {
   StyleSheet,
   Text,
   TextInput,
+  UIManager,
   View,
   StatusBar as NativeStatusBar,
 } from 'react-native';
@@ -213,6 +215,14 @@ function arePartyMembersEqual(first: PartyMember[], second: PartyMember[]) {
   );
 }
 
+function animatePartySwap() {
+  if (Platform.OS === 'android' && UIManager.setLayoutAnimationEnabledExperimental) {
+    UIManager.setLayoutAnimationEnabledExperimental(true);
+  }
+
+  LayoutAnimation.configureNext(LayoutAnimation.Presets.easeInEaseOut);
+}
+
 export default function App() {
   const [selectedSection, setSelectedSection] = useState<SectionKey>('pivo');
   const [menuOpen, setMenuOpen] = useState(false);
@@ -363,6 +373,7 @@ export default function App() {
           return current;
         }
 
+        animatePartySwap();
         return mergedRemoteParty;
       });
       setPartySyncMode('ready');
@@ -400,6 +411,7 @@ export default function App() {
 
         const mergedRemoteParty = mergeCurrentMember(remoteParty, firebaseUser, profile);
 
+        animatePartySwap();
         setParty(mergedRemoteParty);
         setPartySyncMode('ready');
         setJoinTargetCode(null);
@@ -518,6 +530,7 @@ export default function App() {
           return;
         }
 
+        animatePartySwap();
         setParty(selectedParty);
       })
       .catch((error: unknown) => {
@@ -529,6 +542,7 @@ export default function App() {
     const nextRef = partyRefs.find((ref) => ref.inviteCode !== party.inviteCode);
 
     if (!nextRef) {
+      animatePartySwap();
       setParty(defaultParty);
       return;
     }
@@ -536,10 +550,12 @@ export default function App() {
     const nextParty = await fetchPartySync(nextRef.inviteCode);
 
     if (!nextParty) {
+      animatePartySwap();
       setParty(defaultParty);
       return;
     }
 
+    animatePartySwap();
     setParty(nextParty);
   };
 
