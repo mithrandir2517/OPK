@@ -45,22 +45,8 @@ export function PartyScreen({
   const [draftParty, setDraftParty] = useState(party);
   const activePartyCode = expandedPartyCode ?? party.inviteCode;
   const activePartyLoaded = activePartyCode === party.inviteCode;
-  const activePartySummary = activePartyLoaded
-    ? {
-        inviteCode: party.inviteCode,
-        name: party.name,
-        city: party.city,
-        memberCount: draftParty.members.length,
-      }
-    : partyRefs.find((item) => item.inviteCode === activePartyCode) ?? {
-        inviteCode: activePartyCode,
-        name: 'Načítám partu…',
-        city: 'Čekám na sdílená data z Firebase.',
-        memberCount: 0,
-      };
   const isOwner = !!viewerUid && activePartyLoaded && party.creatorUid === viewerUid;
   const canLeave = !!viewerUid && activePartyLoaded && !isOwner;
-  const activePartyMemberCount = activePartyLoaded ? draftParty.members.length : activePartySummary.memberCount;
 
   useEffect(() => {
     if (!editOpen) {
@@ -69,23 +55,21 @@ export function PartyScreen({
   }, [editOpen, party]);
 
   const partyCards = useMemo(
-    () => [
-      {
-        name: activePartySummary.name,
-        city: activePartySummary.city,
-        inviteCode: activePartySummary.inviteCode,
-        memberCount: activePartyMemberCount,
-        isActive: true,
-      },
-      ...partyRefs.filter((item) => item.inviteCode !== activePartyCode).map((item) => ({
-        name: item.name,
-        city: item.city,
-        inviteCode: item.inviteCode,
-        memberCount: item.memberCount,
-        isActive: false,
-      })),
-    ],
-    [activePartyCode, activePartyMemberCount, activePartySummary.city, activePartySummary.inviteCode, activePartySummary.name, partyRefs],
+    () => {
+      const cards = [...partyRefs];
+      if (!cards.some((item) => item.inviteCode === party.inviteCode)) {
+        cards.unshift({
+          inviteCode: party.inviteCode,
+          name: party.name,
+          city: party.city,
+          memberCount: draftParty.members.length,
+          updatedAt: '',
+        });
+      }
+
+      return cards;
+    },
+    [draftParty.members.length, party.city, party.inviteCode, party.name, partyRefs],
   );
 
   const updateParty = (nextParty: Partial<PartyState>) => {
@@ -183,9 +167,11 @@ export function PartyScreen({
             return (
               <View key={item.inviteCode} style={[styles.partyRow, styles.partyRowActive, styles.partyRowExpanded]}>
                 <View style={styles.partyRowCopy}>
-                  <Text style={styles.partyRowTitle}>{item.name || 'Bez názvu'}</Text>
+                  <Text style={styles.partyRowTitle}>{activePartyLoaded ? party.name || 'Bez názvu' : item.name || 'Načítám partu…'}</Text>
                   <Text style={styles.partyRowMeta}>
-                    {activePartyLoaded ? `${item.city || 'bez města'} · ${draftParty.members.length} členové` : `${item.city || 'bez města'} · Čekám na sdílená data z Firebase.`}
+                    {activePartyLoaded
+                      ? `${party.city || 'bez města'} · ${draftParty.members.length} členové`
+                      : `${item.city || 'bez města'} · Čekám na sdílená data z Firebase.`}
                   </Text>
                   <Text style={styles.partyRowCode}>{item.inviteCode}</Text>
                 </View>
