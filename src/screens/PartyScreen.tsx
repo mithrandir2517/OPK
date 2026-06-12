@@ -160,6 +160,51 @@ export function PartyScreen({
     setNewMember('');
   };
 
+  const openPartyActions = () => {
+    const actions: Array<{ text: string; style?: 'default' | 'destructive' | 'cancel'; onPress?: () => void }> = [
+      {
+        text: editOpen ? 'Upravit' : 'Upravit party',
+        onPress: editOpen ? undefined : startEditing,
+      },
+      {
+        text: 'Sdílet kód',
+        onPress: async () => {
+          try {
+            await Share.share({ message: `Kód party: ${activePartyCode}` });
+          } catch {
+            // ignore
+          }
+        },
+      },
+    ];
+
+    if (canKnownLeave) {
+      actions.push({
+        text: 'Opustit party',
+        style: 'destructive',
+        onPress: () =>
+          Alert.alert('Opustit party', 'Opravdu chceš opustit tuto party?', [
+            { text: 'Zrušit', style: 'cancel' },
+            { text: 'Opustit', style: 'destructive', onPress: onLeaveParty },
+          ]),
+      });
+    }
+
+    if (isKnownOwner) {
+      actions.push({
+        text: 'Smazat party',
+        style: 'destructive',
+        onPress: () =>
+          Alert.alert('Smazat party', 'Tím odstraníš sdílenou party pro všechny členy.', [
+            { text: 'Zrušit', style: 'cancel' },
+            { text: 'Smazat', style: 'destructive', onPress: onDeleteParty },
+          ]),
+      });
+    }
+
+    Alert.alert('Party', '', [...actions, { text: 'Zrušit', style: 'cancel' }]);
+  };
+
   return (
     <>
       <View style={styles.sectionHeader}>
@@ -211,50 +256,13 @@ export function PartyScreen({
                     <View style={styles.iconSlot}>
                       <Pressable
                         style={styles.iconButton}
-                        onPress={async () => {
-                          try {
-                            await Share.share({ message: `Kód party: ${item.inviteCode}` });
-                          } catch {
-                            // ignore
-                          }
-                        }}
+                        onPress={openPartyActions}
                       >
-                        <MaterialCommunityIcons name="share-variant-outline" size={20} color="#15251F" />
+                        <MaterialCommunityIcons name="dots-vertical" size={20} color="#15251F" />
                       </Pressable>
                     </View>
                     <View style={styles.iconSlot}>
-                      {canKnownLeave ? (
-                        <Pressable
-                          style={styles.iconButton}
-                          onPress={() =>
-                            Alert.alert('Opustit party', 'Opravdu chceš opustit tuto party?', [
-                              { text: 'Zrušit', style: 'cancel' },
-                              { text: 'Opustit', style: 'destructive', onPress: onLeaveParty },
-                            ])
-                          }
-                        >
-                          <MaterialCommunityIcons name="logout" size={20} color="#15251F" />
-                        </Pressable>
-                      ) : (
-                        <View style={styles.iconButtonPlaceholder} />
-                      )}
-                    </View>
-                    <View style={styles.iconSlot}>
-                      {isKnownOwner ? (
-                        <Pressable
-                          style={[styles.iconButton, styles.iconButtonDanger]}
-                          onPress={() =>
-                            Alert.alert('Smazat party', 'Tím odstraníš sdílenou party pro všechny členy.', [
-                              { text: 'Zrušit', style: 'cancel' },
-                              { text: 'Smazat', style: 'destructive', onPress: onDeleteParty },
-                            ])
-                          }
-                        >
-                          <MaterialCommunityIcons name="delete-outline" size={20} color="#991B1B" />
-                        </Pressable>
-                      ) : (
-                        <View style={styles.iconButtonPlaceholder} />
-                      )}
+                      <View style={styles.iconButtonPlaceholder} />
                     </View>
                   </View>
                 </View>
