@@ -230,8 +230,23 @@ export function PartyScreen({
                         }
                       >
                         <MaterialCommunityIcons name="logout" size={20} color="#15251F" />
+                        </Pressable>
+                      ) : null}
+                    {canLeave ? (
+                      <Pressable
+                        style={styles.iconButton}
+                        onPress={() =>
+                          Alert.alert('Opustit party', 'Opravdu chceš opustit tuto party?', [
+                            { text: 'Zrušit', style: 'cancel' },
+                            { text: 'Opustit', style: 'destructive', onPress: onLeaveParty },
+                          ])
+                        }
+                      >
+                        <MaterialCommunityIcons name="logout" size={20} color="#15251F" />
                       </Pressable>
-                    ) : null}
+                    ) : (
+                      <View style={styles.iconButtonPlaceholder} />
+                    )}
                     {isOwner ? (
                       <Pressable
                         style={[styles.iconButton, styles.iconButtonDanger]}
@@ -244,7 +259,9 @@ export function PartyScreen({
                       >
                         <MaterialCommunityIcons name="delete-outline" size={20} color="#991B1B" />
                       </Pressable>
-                    ) : null}
+                    ) : (
+                      <View style={styles.iconButtonPlaceholder} />
+                    )}
                   </View>
                 </View>
                 {!activePartyLoaded ? (
@@ -704,6 +721,11 @@ const styles = StyleSheet.create({
   iconButtonDanger: {
     backgroundColor: '#FFF1F1',
     borderColor: '#F9B4B4',
+  },
+  iconButtonPlaceholder: {
+    height: 36,
+    opacity: 0,
+    width: 36,
   },
   shareButton: {
     alignItems: 'center',
