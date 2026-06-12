@@ -203,10 +203,10 @@ export function PartyScreen({
                         </Pressable>
                       </>
                     ) : (
-                      <Pressable style={styles.iconButton} onPress={startEditing}>
-                        <MaterialCommunityIcons name="pencil-outline" size={20} color="#15251F" />
-                      </Pressable>
-                    )}
+                        <Pressable style={styles.iconButton} onPress={startEditing}>
+                          <MaterialCommunityIcons name="pencil-outline" size={20} color="#15251F" />
+                        </Pressable>
+                      )}
                     <Pressable
                       style={styles.iconButton}
                       onPress={async () => {
@@ -219,20 +219,7 @@ export function PartyScreen({
                     >
                       <MaterialCommunityIcons name="share-variant-outline" size={20} color="#15251F" />
                     </Pressable>
-                    {canLeave ? (
-                      <Pressable
-                        style={styles.iconButton}
-                        onPress={() =>
-                          Alert.alert('Opustit party', 'Opravdu chceš opustit tuto party?', [
-                            { text: 'Zrušit', style: 'cancel' },
-                            { text: 'Opustit', style: 'destructive', onPress: onLeaveParty },
-                          ])
-                        }
-                      >
-                        <MaterialCommunityIcons name="logout" size={20} color="#15251F" />
-                        </Pressable>
-                      ) : null}
-                    {canLeave ? (
+                    {activePartyLoaded && canLeave ? (
                       <Pressable
                         style={styles.iconButton}
                         onPress={() =>
@@ -247,7 +234,7 @@ export function PartyScreen({
                     ) : (
                       <View style={styles.iconButtonPlaceholder} />
                     )}
-                    {isOwner ? (
+                    {activePartyLoaded && isOwner ? (
                       <Pressable
                         style={[styles.iconButton, styles.iconButtonDanger]}
                         onPress={() =>
