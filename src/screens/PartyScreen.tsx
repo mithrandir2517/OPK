@@ -8,6 +8,7 @@ type PartyScreenProps = {
   onBack: () => void;
   party: PartyState;
   partyRefs: PartyRef[];
+  partyPreview: PartyRef | null;
   viewerUid: string | null;
   canSync: boolean;
   onChangeParty: (party: PartyState) => void;
@@ -25,6 +26,7 @@ export function PartyScreen({
   onBack,
   party,
   partyRefs,
+  partyPreview,
   viewerUid,
   canSync,
   onChangeParty,
@@ -43,6 +45,10 @@ export function PartyScreen({
   const [draftParty, setDraftParty] = useState(party);
   const isOwner = !!viewerUid && party.creatorUid === viewerUid;
   const canLeave = !!viewerUid && !isOwner;
+  const activePartyCode = partyPreview?.inviteCode ?? party.inviteCode;
+  const activePartyName = partyPreview?.name ?? party.name;
+  const activePartyCity = partyPreview?.city ?? party.city;
+  const activePartyMemberCount = partyPreview?.memberCount ?? draftParty.members.length;
 
   useEffect(() => {
     if (!editOpen) {
@@ -53,13 +59,13 @@ export function PartyScreen({
   const partyCards = useMemo(
     () => [
       {
-        name: party.name,
-        city: party.city,
-        inviteCode: party.inviteCode,
-        memberCount: party.members.length,
+        name: activePartyName,
+        city: activePartyCity,
+        inviteCode: activePartyCode,
+        memberCount: activePartyMemberCount,
         isActive: true,
       },
-      ...partyRefs.filter((item) => item.inviteCode !== party.inviteCode).map((item) => ({
+      ...partyRefs.filter((item) => item.inviteCode !== activePartyCode).map((item) => ({
         name: item.name,
         city: item.city,
         inviteCode: item.inviteCode,
@@ -67,7 +73,7 @@ export function PartyScreen({
         isActive: false,
       })),
     ],
-    [party, partyRefs],
+    [activePartyCity, activePartyCode, activePartyMemberCount, activePartyName, draftParty.members.length, partyPreview, partyRefs],
   );
 
   const updateParty = (nextParty: Partial<PartyState>) => {
@@ -141,7 +147,7 @@ export function PartyScreen({
 
         <View style={styles.partyList}>
           {partyCards.map((item) => {
-            const isActive = item.inviteCode === party.inviteCode;
+            const isActive = item.inviteCode === activePartyCode;
 
             if (!isActive) {
               return (
@@ -165,62 +171,66 @@ export function PartyScreen({
             return (
               <View key={item.inviteCode} style={[styles.partyRow, styles.partyRowActive, styles.partyRowExpanded]}>
                 <View style={styles.partyRowCopy}>
-                  <Text style={styles.partyRowTitle}>{isJoining ? 'Načítám partu…' : item.name || 'Bez názvu'}</Text>
+                  <Text style={styles.partyRowTitle}>{isJoining || partyPreview ? activePartyName || 'Načítám partu…' : item.name || 'Bez názvu'}</Text>
                   <Text style={styles.partyRowMeta}>
-                    {isJoining ? 'Čekám na sdílená data z Firebase.' : `${item.city || 'bez města'} · ${draftParty.members.length} členové`}
+                    {isJoining || partyPreview ? activePartyCity || 'Čekám na sdílená data z Firebase.' : `${item.city || 'bez města'} · ${draftParty.members.length} členové`}
                   </Text>
                   <Text style={styles.partyRowCode}>{item.inviteCode}</Text>
                 </View>
-                <View style={styles.partyMembers}>
-                  {draftParty.members.map((member) => (
-                    <Pressable key={member.uid} style={styles.memberChip} onPress={() => removeMember(member)}>
-                      <View style={styles.memberChipBody}>
-                        <Text style={styles.memberChipText}>{member.displayName}</Text>
-                        {editOpen ? <Text style={styles.memberChipMeta}>{member.email ?? member.uid}</Text> : null}
-                      </View>
-                      <Text style={styles.memberChipRemove}>×</Text>
-                    </Pressable>
-                  ))}
-                </View>
-                {editOpen ? (
-                  <View style={styles.editPanel}>
-                    <View style={styles.formField}>
-                      <Text style={styles.inputLabel}>Název party</Text>
-                      <TextInput
-                        value={draftParty.name}
-                        onChangeText={updateName}
-                        placeholder="Parta Vyškov"
-                        placeholderTextColor="#9CA3AF"
-                        style={styles.textInput}
-                      />
-                    </View>
-                    <View style={styles.formField}>
-                      <Text style={styles.inputLabel}>Město</Text>
-                      <TextInput
-                        value={draftParty.city}
-                        onChangeText={(city) => updateParty({ city })}
-                        placeholder="Vyškov"
-                        placeholderTextColor="#9CA3AF"
-                        style={styles.textInput}
-                      />
-                    </View>
-                    <View style={styles.formField}>
-                      <Text style={styles.inputLabel}>Lokální člen</Text>
-                      <View style={styles.memberInputRow}>
-                        <TextInput
-                          value={newMember}
-                          onChangeText={setNewMember}
-                          placeholder="Jméno kamaráda"
-                          placeholderTextColor="#9CA3AF"
-                          style={[styles.textInput, styles.memberInput]}
-                        />
-                        <Pressable style={styles.addMemberButton} onPress={addMember}>
-                          <Text style={styles.addMemberButtonText}>Přidat</Text>
+                {partyPreview ? null : (
+                  <>
+                    <View style={styles.partyMembers}>
+                      {draftParty.members.map((member) => (
+                        <Pressable key={member.uid} style={styles.memberChip} onPress={() => removeMember(member)}>
+                          <View style={styles.memberChipBody}>
+                            <Text style={styles.memberChipText}>{member.displayName}</Text>
+                            {editOpen ? <Text style={styles.memberChipMeta}>{member.email ?? member.uid}</Text> : null}
+                          </View>
+                          <Text style={styles.memberChipRemove}>×</Text>
                         </Pressable>
-                      </View>
+                      ))}
                     </View>
-                  </View>
-                ) : null}
+                    {editOpen ? (
+                      <View style={styles.editPanel}>
+                        <View style={styles.formField}>
+                          <Text style={styles.inputLabel}>Název party</Text>
+                          <TextInput
+                            value={draftParty.name}
+                            onChangeText={updateName}
+                            placeholder="Parta Vyškov"
+                            placeholderTextColor="#9CA3AF"
+                            style={styles.textInput}
+                          />
+                        </View>
+                        <View style={styles.formField}>
+                          <Text style={styles.inputLabel}>Město</Text>
+                          <TextInput
+                            value={draftParty.city}
+                            onChangeText={(city) => updateParty({ city })}
+                            placeholder="Vyškov"
+                            placeholderTextColor="#9CA3AF"
+                            style={styles.textInput}
+                          />
+                        </View>
+                        <View style={styles.formField}>
+                          <Text style={styles.inputLabel}>Lokální člen</Text>
+                          <View style={styles.memberInputRow}>
+                            <TextInput
+                              value={newMember}
+                              onChangeText={setNewMember}
+                              placeholder="Jméno kamaráda"
+                              placeholderTextColor="#9CA3AF"
+                              style={[styles.textInput, styles.memberInput]}
+                            />
+                            <Pressable style={styles.addMemberButton} onPress={addMember}>
+                              <Text style={styles.addMemberButtonText}>Přidat</Text>
+                            </Pressable>
+                          </View>
+                        </View>
+                      </View>
+                    ) : null}
+                  </>
+                )}
                 <View style={styles.footerActions}>
                   {editOpen ? (
                     <>
