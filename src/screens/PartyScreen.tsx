@@ -181,15 +181,71 @@ export function PartyScreen({
 
             return isActive ? (
               <View key={item.inviteCode} style={[styles.partyRow, styles.partyRowActive, styles.partyRowExpanded]}>
-                <View style={styles.partyRowCopy}>
-                  <Text style={styles.activeCardLabel}>{activePartyLoaded ? 'Aktivní party' : 'Načítám party'}</Text>
-                  <Text style={styles.activePartyTitle}>{activePartyLoaded ? party.name || 'Bez názvu' : item.name || 'Načítám partu…'}</Text>
-                  <Text style={styles.activePartyMeta}>
-                    {activePartyLoaded
-                      ? `${party.city || 'bez města'} · ${draftParty.members.length} členů`
-                      : `${item.city || 'bez města'} · Čekám na sdílená data z Firebase.`}
-                  </Text>
-                  <Text style={styles.partyRowCode}>{item.inviteCode}</Text>
+                <View style={styles.activeRowTop}>
+                  <View style={styles.partyRowCopy}>
+                    <Text style={styles.activeCardLabel}>{activePartyLoaded ? 'Aktivní party' : 'Načítám party'}</Text>
+                    <Text style={styles.activePartyTitle}>{activePartyLoaded ? party.name || 'Bez názvu' : item.name || 'Načítám partu…'}</Text>
+                    <Text style={styles.activePartyMeta}>
+                      {activePartyLoaded
+                        ? `${party.city || 'bez města'} · ${draftParty.members.length} členů`
+                        : `${item.city || 'bez města'} · Čekám na sdílená data z Firebase.`}
+                    </Text>
+                    <Text style={styles.partyRowCode}>{item.inviteCode}</Text>
+                  </View>
+                  <View style={styles.headerActions}>
+                    {editOpen ? (
+                      <>
+                        <Pressable style={styles.iconButton} onPress={saveEditing}>
+                          <MaterialCommunityIcons name="check" size={20} color="#15251F" />
+                        </Pressable>
+                        <Pressable style={styles.iconButton} onPress={cancelEditing}>
+                          <MaterialCommunityIcons name="close" size={20} color="#15251F" />
+                        </Pressable>
+                      </>
+                    ) : (
+                      <Pressable style={styles.iconButton} onPress={startEditing}>
+                        <MaterialCommunityIcons name="pencil-outline" size={20} color="#15251F" />
+                      </Pressable>
+                    )}
+                    <Pressable
+                      style={styles.iconButton}
+                      onPress={async () => {
+                        try {
+                          await Share.share({ message: `Kód party: ${item.inviteCode}` });
+                        } catch {
+                          // ignore
+                        }
+                      }}
+                    >
+                      <MaterialCommunityIcons name="share-variant-outline" size={20} color="#15251F" />
+                    </Pressable>
+                    {canLeave ? (
+                      <Pressable
+                        style={styles.iconButton}
+                        onPress={() =>
+                          Alert.alert('Opustit party', 'Opravdu chceš opustit tuto party?', [
+                            { text: 'Zrušit', style: 'cancel' },
+                            { text: 'Opustit', style: 'destructive', onPress: onLeaveParty },
+                          ])
+                        }
+                      >
+                        <MaterialCommunityIcons name="logout" size={20} color="#15251F" />
+                      </Pressable>
+                    ) : null}
+                    {isOwner ? (
+                      <Pressable
+                        style={[styles.iconButton, styles.iconButtonDanger]}
+                        onPress={() =>
+                          Alert.alert('Smazat party', 'Tím odstraníš sdílenou party pro všechny členy.', [
+                            { text: 'Zrušit', style: 'cancel' },
+                            { text: 'Smazat', style: 'destructive', onPress: onDeleteParty },
+                          ])
+                        }
+                      >
+                        <MaterialCommunityIcons name="delete-outline" size={20} color="#991B1B" />
+                      </Pressable>
+                    ) : null}
+                  </View>
                 </View>
                 {!activePartyLoaded ? (
                   <View style={styles.loadingState}>
@@ -248,61 +304,6 @@ export function PartyScreen({
                         </View>
                       </View>
                     ) : null}
-
-                    <View style={styles.footerActions}>
-                      {editOpen ? (
-                        <>
-                          <Pressable style={styles.iconButton} onPress={saveEditing}>
-                            <MaterialCommunityIcons name="check" size={20} color="#15251F" />
-                          </Pressable>
-                          <Pressable style={styles.iconButton} onPress={cancelEditing}>
-                            <MaterialCommunityIcons name="close" size={20} color="#15251F" />
-                          </Pressable>
-                        </>
-                      ) : (
-                        <Pressable style={styles.iconButton} onPress={startEditing}>
-                          <MaterialCommunityIcons name="pencil-outline" size={20} color="#15251F" />
-                        </Pressable>
-                      )}
-                      <Pressable
-                        style={styles.iconButton}
-                        onPress={async () => {
-                          try {
-                            await Share.share({ message: `Kód party: ${item.inviteCode}` });
-                          } catch {
-                            // ignore
-                          }
-                        }}
-                      >
-                        <MaterialCommunityIcons name="share-variant-outline" size={20} color="#15251F" />
-                      </Pressable>
-                      {canLeave ? (
-                        <Pressable
-                          style={styles.iconButton}
-                          onPress={() =>
-                            Alert.alert('Opustit party', 'Opravdu chceš opustit tuto party?', [
-                              { text: 'Zrušit', style: 'cancel' },
-                              { text: 'Opustit', style: 'destructive', onPress: onLeaveParty },
-                            ])
-                          }
-                        >
-                          <MaterialCommunityIcons name="logout" size={20} color="#15251F" />
-                        </Pressable>
-                      ) : null}
-                      {isOwner ? (
-                        <Pressable
-                          style={[styles.iconButton, styles.iconButtonDanger]}
-                          onPress={() =>
-                            Alert.alert('Smazat party', 'Tím odstraníš sdílenou party pro všechny členy.', [
-                              { text: 'Zrušit', style: 'cancel' },
-                              { text: 'Smazat', style: 'destructive', onPress: onDeleteParty },
-                            ])
-                          }
-                        >
-                          <MaterialCommunityIcons name="delete-outline" size={20} color="#991B1B" />
-                        </Pressable>
-                      ) : null}
-                    </View>
                   </>
                 )}
               </View>
@@ -483,6 +484,12 @@ const styles = StyleSheet.create({
     flexDirection: 'column',
     gap: 12,
     justifyContent: 'flex-start',
+  },
+  activeRowTop: {
+    alignItems: 'flex-start',
+    flexDirection: 'row',
+    gap: 12,
+    justifyContent: 'space-between',
   },
   memberChip: {
     alignItems: 'center',
@@ -669,6 +676,13 @@ const styles = StyleSheet.create({
     color: '#6B7280',
     fontSize: 13,
     fontWeight: '800',
+  },
+  headerActions: {
+    alignItems: 'center',
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    gap: 8,
+    justifyContent: 'flex-end',
   },
   footerActions: {
     alignItems: 'center',
