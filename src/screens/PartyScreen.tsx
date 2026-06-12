@@ -8,7 +8,7 @@ type PartyScreenProps = {
   onBack: () => void;
   party: PartyState;
   partyRefs: PartyRef[];
-  partyPreview: PartyRef | null;
+  expandedPartyCode: string | null;
   viewerUid: string | null;
   canSync: boolean;
   onChangeParty: (party: PartyState) => void;
@@ -26,7 +26,7 @@ export function PartyScreen({
   onBack,
   party,
   partyRefs,
-  partyPreview,
+  expandedPartyCode,
   viewerUid,
   canSync,
   onChangeParty,
@@ -43,12 +43,24 @@ export function PartyScreen({
   const [inviteCode, setInviteCode] = useState('');
   const [editOpen, setEditOpen] = useState(false);
   const [draftParty, setDraftParty] = useState(party);
-  const isOwner = !!viewerUid && party.creatorUid === viewerUid;
-  const canLeave = !!viewerUid && !isOwner;
-  const activePartyCode = partyPreview?.inviteCode ?? party.inviteCode;
-  const activePartyName = partyPreview?.name ?? party.name;
-  const activePartyCity = partyPreview?.city ?? party.city;
-  const activePartyMemberCount = partyPreview?.memberCount ?? draftParty.members.length;
+  const activePartyCode = expandedPartyCode ?? party.inviteCode;
+  const activePartyLoaded = activePartyCode === party.inviteCode;
+  const activePartySummary = activePartyLoaded
+    ? {
+        inviteCode: party.inviteCode,
+        name: party.name,
+        city: party.city,
+        memberCount: draftParty.members.length,
+      }
+    : partyRefs.find((item) => item.inviteCode === activePartyCode) ?? {
+        inviteCode: activePartyCode,
+        name: 'Načítám partu…',
+        city: 'Čekám na sdílená data z Firebase.',
+        memberCount: 0,
+      };
+  const isOwner = !!viewerUid && activePartyLoaded && party.creatorUid === viewerUid;
+  const canLeave = !!viewerUid && activePartyLoaded && !isOwner;
+  const activePartyMemberCount = activePartyLoaded ? draftParty.members.length : activePartySummary.memberCount;
 
   useEffect(() => {
     if (!editOpen) {
@@ -59,9 +71,9 @@ export function PartyScreen({
   const partyCards = useMemo(
     () => [
       {
-        name: activePartyName,
-        city: activePartyCity,
-        inviteCode: activePartyCode,
+        name: activePartySummary.name,
+        city: activePartySummary.city,
+        inviteCode: activePartySummary.inviteCode,
         memberCount: activePartyMemberCount,
         isActive: true,
       },
@@ -73,7 +85,7 @@ export function PartyScreen({
         isActive: false,
       })),
     ],
-    [activePartyCity, activePartyCode, activePartyMemberCount, activePartyName, draftParty.members.length, partyPreview, partyRefs],
+    [activePartyCode, activePartyMemberCount, activePartySummary.city, activePartySummary.inviteCode, activePartySummary.name, partyRefs],
   );
 
   const updateParty = (nextParty: Partial<PartyState>) => {
@@ -171,13 +183,17 @@ export function PartyScreen({
             return (
               <View key={item.inviteCode} style={[styles.partyRow, styles.partyRowActive, styles.partyRowExpanded]}>
                 <View style={styles.partyRowCopy}>
-                  <Text style={styles.partyRowTitle}>{isJoining || partyPreview ? activePartyName || 'Načítám partu…' : item.name || 'Bez názvu'}</Text>
+                  <Text style={styles.partyRowTitle}>{item.name || 'Bez názvu'}</Text>
                   <Text style={styles.partyRowMeta}>
-                    {isJoining || partyPreview ? activePartyCity || 'Čekám na sdílená data z Firebase.' : `${item.city || 'bez města'} · ${draftParty.members.length} členové`}
+                    {activePartyLoaded ? `${item.city || 'bez města'} · ${draftParty.members.length} členové` : `${item.city || 'bez města'} · Čekám na sdílená data z Firebase.`}
                   </Text>
                   <Text style={styles.partyRowCode}>{item.inviteCode}</Text>
                 </View>
-                {partyPreview ? null : (
+                {!activePartyLoaded ? (
+                  <View style={styles.loadingState}>
+                    <Text style={styles.loadingStateText}>Načítám sdílenou partu…</Text>
+                  </View>
+                ) : (
                   <>
                     <View style={styles.partyMembers}>
                       {draftParty.members.map((member) => (
@@ -231,60 +247,62 @@ export function PartyScreen({
                     ) : null}
                   </>
                 )}
-                <View style={styles.footerActions}>
-                  {editOpen ? (
-                    <>
-                      <Pressable style={styles.iconButton} onPress={saveEditing}>
-                        <MaterialCommunityIcons name="check" size={20} color="#15251F" />
+                {activePartyLoaded ? (
+                  <View style={styles.footerActions}>
+                    {editOpen ? (
+                      <>
+                        <Pressable style={styles.iconButton} onPress={saveEditing}>
+                          <MaterialCommunityIcons name="check" size={20} color="#15251F" />
+                        </Pressable>
+                        <Pressable style={styles.iconButton} onPress={cancelEditing}>
+                          <MaterialCommunityIcons name="close" size={20} color="#15251F" />
+                        </Pressable>
+                      </>
+                    ) : (
+                      <Pressable style={styles.iconButton} onPress={startEditing}>
+                        <MaterialCommunityIcons name="pencil-outline" size={20} color="#15251F" />
                       </Pressable>
-                      <Pressable style={styles.iconButton} onPress={cancelEditing}>
-                        <MaterialCommunityIcons name="close" size={20} color="#15251F" />
-                      </Pressable>
-                    </>
-                  ) : (
-                    <Pressable style={styles.iconButton} onPress={startEditing}>
-                      <MaterialCommunityIcons name="pencil-outline" size={20} color="#15251F" />
-                    </Pressable>
-                  )}
-                  <Pressable
-                    style={styles.iconButton}
-                    onPress={async () => {
-                      try {
-                        await Share.share({ message: `Kód party: ${item.inviteCode}` });
-                      } catch {
-                        // ignore
-                      }
-                    }}
-                  >
-                    <MaterialCommunityIcons name="share-variant-outline" size={20} color="#15251F" />
-                  </Pressable>
-                  {canLeave ? (
+                    )}
                     <Pressable
                       style={styles.iconButton}
-                      onPress={() =>
-                        Alert.alert('Opustit party', 'Opravdu chceš opustit tuto party?', [
-                          { text: 'Zrušit', style: 'cancel' },
-                          { text: 'Opustit', style: 'destructive', onPress: onLeaveParty },
-                        ])
-                      }
+                      onPress={async () => {
+                        try {
+                          await Share.share({ message: `Kód party: ${item.inviteCode}` });
+                        } catch {
+                          // ignore
+                        }
+                      }}
                     >
-                      <MaterialCommunityIcons name="logout" size={20} color="#15251F" />
+                      <MaterialCommunityIcons name="share-variant-outline" size={20} color="#15251F" />
                     </Pressable>
-                  ) : null}
-                  {isOwner ? (
-                    <Pressable
-                      style={[styles.iconButton, styles.iconButtonDanger]}
-                      onPress={() =>
-                        Alert.alert('Smazat party', 'Tím odstraníš sdílenou party pro všechny členy.', [
-                          { text: 'Zrušit', style: 'cancel' },
-                          { text: 'Smazat', style: 'destructive', onPress: onDeleteParty },
-                        ])
-                      }
-                    >
-                      <MaterialCommunityIcons name="delete-outline" size={20} color="#991B1B" />
-                    </Pressable>
-                  ) : null}
-                </View>
+                    {canLeave ? (
+                      <Pressable
+                        style={styles.iconButton}
+                        onPress={() =>
+                          Alert.alert('Opustit party', 'Opravdu chceš opustit tuto party?', [
+                            { text: 'Zrušit', style: 'cancel' },
+                            { text: 'Opustit', style: 'destructive', onPress: onLeaveParty },
+                          ])
+                        }
+                      >
+                        <MaterialCommunityIcons name="logout" size={20} color="#15251F" />
+                      </Pressable>
+                    ) : null}
+                    {isOwner ? (
+                      <Pressable
+                        style={[styles.iconButton, styles.iconButtonDanger]}
+                        onPress={() =>
+                          Alert.alert('Smazat party', 'Tím odstraníš sdílenou party pro všechny členy.', [
+                            { text: 'Zrušit', style: 'cancel' },
+                            { text: 'Smazat', style: 'destructive', onPress: onDeleteParty },
+                          ])
+                        }
+                      >
+                        <MaterialCommunityIcons name="delete-outline" size={20} color="#991B1B" />
+                      </Pressable>
+                    ) : null}
+                  </View>
+                ) : null}
               </View>
             );
           })}
@@ -593,6 +611,19 @@ const styles = StyleSheet.create({
   editPanel: {
     gap: 12,
     marginTop: 2,
+  },
+  loadingState: {
+    backgroundColor: '#F4F1EA',
+    borderColor: '#E1DBD2',
+    borderRadius: 8,
+    borderWidth: 1,
+    paddingHorizontal: 12,
+    paddingVertical: 10,
+  },
+  loadingStateText: {
+    color: '#6B7280',
+    fontSize: 13,
+    fontWeight: '800',
   },
   footerActions: {
     alignItems: 'center',

@@ -234,7 +234,7 @@ export default function App() {
   const [profile, setProfile] = useState<UserProfile>(defaultProfile);
   const [party, setParty] = useState<PartyState>(defaultParty);
   const [partyRefs, setPartyRefs] = useState<PartyRef[]>([]);
-  const [partyPreview, setPartyPreview] = useState<PartyRef | null>(null);
+  const [expandedPartyCode, setExpandedPartyCode] = useState<string | null>(null);
   const [firebaseUser, setFirebaseUser] = useState<null | { uid: string; displayName: string; email: string | null; photoURL: string | null }>(null);
   const googleClientIdReady = !!googleWebClientId;
 
@@ -473,7 +473,7 @@ export default function App() {
   );
 
   const activeActivity = activityMeta[selectedActivity];
-  const activePartyCode = joinTargetCode ?? partyPreview?.inviteCode ?? party.inviteCode;
+  const activePartyCode = joinTargetCode ?? expandedPartyCode ?? party.inviteCode;
   const showAuthGate = storageReady && firebaseEnabled && !firebaseUser && !authGateDismissed;
 
   const handleCreateParty = () => {
@@ -524,28 +524,24 @@ export default function App() {
     setPartySyncError(null);
     setJoinTargetCode(null);
     setPartySyncMode('ready');
-
-    const selectedRef = partyRefs.find((item) => item.inviteCode === inviteCode);
-    if (selectedRef) {
-      animatePartySwap();
-      setPartyPreview(selectedRef);
-    }
+    animatePartySwap();
+    setExpandedPartyCode(inviteCode);
 
     void fetchPartySync(inviteCode)
       .then((selectedParty) => {
         if (!selectedParty) {
           setPartySyncError(`Party ${inviteCode} se ve Firebase nenašla.`);
-          setPartyPreview(null);
+          setExpandedPartyCode(party.inviteCode);
           return;
         }
 
         animatePartySwap();
         setParty(selectedParty);
-        setPartyPreview(null);
+        setExpandedPartyCode(selectedParty.inviteCode);
       })
       .catch((error: unknown) => {
         setPartySyncError(error instanceof Error ? error.message : 'Nepovedlo se načíst party z Firebase.');
-        setPartyPreview(null);
+        setExpandedPartyCode(party.inviteCode);
       });
   };
 
@@ -554,7 +550,7 @@ export default function App() {
 
     if (!nextRef) {
       animatePartySwap();
-      setPartyPreview(null);
+      setExpandedPartyCode(null);
       setParty(defaultParty);
       return;
     }
@@ -563,13 +559,13 @@ export default function App() {
 
     if (!nextParty) {
       animatePartySwap();
-      setPartyPreview(null);
+      setExpandedPartyCode(null);
       setParty(defaultParty);
       return;
     }
 
     animatePartySwap();
-    setPartyPreview(nextRef);
+    setExpandedPartyCode(nextRef.inviteCode);
     setParty(nextParty);
   };
 
@@ -690,7 +686,7 @@ export default function App() {
               onBack={() => setSelectedSection(selectedActivity)}
               party={party}
               partyRefs={partyRefs}
-              partyPreview={partyPreview}
+              expandedPartyCode={expandedPartyCode}
               viewerUid={firebaseUser?.uid ?? null}
               canSync={firebaseEnabled && !!firebaseUser}
               onChangeParty={setParty}
