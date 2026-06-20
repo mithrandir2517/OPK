@@ -8,10 +8,11 @@ type ActivityPanelProps = {
   action: string;
   accent: string;
   icon: IconName;
+  onActionPress?: () => void;
   children: ReactNode;
 };
 
-export function ActivityPanel({ title, action, accent, icon, children }: ActivityPanelProps) {
+export function ActivityPanel({ title, action, accent, icon, onActionPress, children }: ActivityPanelProps) {
   return (
     <View style={[styles.detailPanel, { borderTopColor: accent }]}>
       <View style={styles.sectionHeader}>
@@ -19,7 +20,7 @@ export function ActivityPanel({ title, action, accent, icon, children }: Activit
           <MaterialCommunityIcons name={icon} size={25} color={accent} />
           <Text style={styles.detailTitle}>{title}</Text>
         </View>
-        <Pressable style={[styles.smallButton, { backgroundColor: accent }]}>
+        <Pressable style={[styles.smallButton, { backgroundColor: accent }]} onPress={onActionPress}>
           <MaterialCommunityIcons name="plus" size={18} color="#FFFFFF" />
           <Text style={styles.smallButtonText}>{action}</Text>
         </Pressable>

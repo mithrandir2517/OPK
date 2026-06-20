@@ -1,6 +1,6 @@
 import { StatusBar } from 'expo-status-bar';
 import { MaterialCommunityIcons } from '@expo/vector-icons';
-import { useEffect, useMemo, useRef, useState, type ReactNode } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from 'react';
 import {
   LayoutAnimation,
   Platform,
@@ -14,6 +14,7 @@ import {
   View,
   StatusBar as NativeStatusBar,
 } from 'react-native';
+import * as Notifications from 'expo-notifications';
 import { GoogleSignin, type SignInResponse } from '@react-native-google-signin/google-signin';
 import { GoogleAuthProvider, onAuthStateChanged, signInWithCredential, signOut } from 'firebase/auth';
 import { ActivityPanel } from './src/components/ActivityPanel';
@@ -32,11 +33,13 @@ import {
   fetchPartySync,
   recordPartyEventSync,
   removePartyMemberSync,
+  saveObedSync,
   savePartySync,
   savePartyRefSync,
   savePushTokenSync,
   savePivoSync,
   subscribeUserPartyRefs,
+  subscribeObedSync,
   subscribePartySync,
   subscribePivoSync,
 } from './src/backend/opkSync';
@@ -182,6 +185,33 @@ function makePartyCode(baseName: string, city: string) {
   return `${base}OPK${suffix}`;
 }
 
+type NotificationRoute = {
+  section: SectionKey;
+  partyCode: string | null;
+};
+
+function readNotificationRoute(data: Record<string, unknown> | undefined): NotificationRoute | null {
+  if (!data) {
+    return null;
+  }
+
+  const rawActivity = typeof data.activity === 'string'
+    ? data.activity.trim()
+    : typeof data.eventType === 'string'
+      ? data.eventType.trim().split('.')[0]
+      : '';
+  const partyCode = typeof data.partyCode === 'string' ? normalizePartyCode(data.partyCode) : null;
+
+  if (rawActivity === 'obed' || rawActivity === 'pivo' || rawActivity === 'kolo') {
+    return {
+      section: rawActivity,
+      partyCode,
+    };
+  }
+
+  return null;
+}
+
 function makePartyMember(user: { uid: string; displayName: string; email: string | null }, profile: UserProfile): PartyMember {
   const displayName = profile.name.trim() !== defaultProfile.name ? profile.name.trim() : user.displayName.trim();
 
@@ -245,6 +275,7 @@ export default function App() {
   const pivoSuppressEvent = useRef(false);
   const pushOwnerUid = useRef<string | null>(null);
   const pushTokenRef = useRef<string | null>(null);
+  const pendingNotificationRoute = useRef<NotificationRoute | null>(null);
 
   useEffect(() => {
     let mounted = true;
@@ -511,6 +542,73 @@ export default function App() {
     return subscribeUserPartyRefs(firebaseUser.uid, setPartyRefs);
   }, [firebaseUser]);
 
+  const openNotificationRoute = useCallback(
+    async (route: NotificationRoute) => {
+      if (route.partyCode && route.partyCode !== party.inviteCode) {
+        const selectedParty = await fetchPartySync(route.partyCode);
+
+        if (selectedParty) {
+          animatePartySwap();
+          setJoinTargetCode(null);
+          setPartySyncError(null);
+          setPartySyncMode('ready');
+          setExpandedPartyCode(selectedParty.inviteCode);
+          setParty(selectedParty);
+        }
+      }
+
+      setSelectedSection(route.section);
+      setMenuOpen(false);
+    },
+    [party.inviteCode],
+  );
+
+  useEffect(() => {
+    let mounted = true;
+
+    const handleResponse = async (response: Notifications.NotificationResponse) => {
+      const route = readNotificationRoute(
+        response.notification.request.content.data as Record<string, unknown> | undefined,
+      );
+
+      if (!route || !mounted) {
+        return;
+      }
+
+      if (!storageReady) {
+        pendingNotificationRoute.current = route;
+        return;
+      }
+
+      await openNotificationRoute(route);
+    };
+
+    void Notifications.getLastNotificationResponseAsync().then((response) => {
+      if (response) {
+        void handleResponse(response);
+      }
+    });
+
+    const subscription = Notifications.addNotificationResponseReceivedListener((response) => {
+      void handleResponse(response);
+    });
+
+    return () => {
+      mounted = false;
+      subscription.remove();
+    };
+  }, [openNotificationRoute, storageReady]);
+
+  useEffect(() => {
+    if (!storageReady || !pendingNotificationRoute.current) {
+      return;
+    }
+
+    const route = pendingNotificationRoute.current;
+    pendingNotificationRoute.current = null;
+    void openNotificationRoute(route);
+  }, [openNotificationRoute, storageReady]);
+
   const selectedActivity = useMemo<ActivityKey>(
     () =>
       selectedSection === 'obed' || selectedSection === 'pivo' || selectedSection === 'kolo'
@@ -679,14 +777,15 @@ export default function App() {
 
         <ScrollView contentContainerStyle={styles.screen} showsVerticalScrollIndicator={false}>
           {selectedSection === 'pivo' && (
-            <PivoScreen
-              accent={activeActivity.accent}
-              partyCode={activePartyCode}
-              canSync={firebaseEnabled && !!firebaseUser}
-              viewerId={firebaseUser?.uid ?? null}
-              viewerName={firebaseUser?.displayName ?? profile.name}
-            />
-          )}
+          <PivoScreen
+            accent={activeActivity.accent}
+            partyCode={activePartyCode}
+            canSync={firebaseEnabled && !!firebaseUser}
+            viewerId={firebaseUser?.uid ?? null}
+            viewerName={firebaseUser?.displayName ?? profile.name}
+            partyMembers={party.members}
+          />
+        )}
           {selectedSection === 'obed' && (
             <ObedScreen
               accent={activeActivity.accent}
@@ -877,10 +976,18 @@ function ObedScreen({
 }) {
   const restaurantsWithMenu = lunchRestaurants.filter((restaurant) => restaurant.items.length > 0);
   const [expandedRestaurants, setExpandedRestaurants] = useState<string[]>([]);
-  const [selectedRestaurant, setSelectedRestaurant] = useState('');
-  const [remoteVotes, setRemoteVotes] = useState<ActivityVote[]>([]);
+  const [place, setPlace] = useState('');
+  const [time, setTime] = useState('12:30');
+  const [note, setNote] = useState('');
+  const [reply, setReply] = useState<PivoState['reply']>('Jdu');
+  const [arrival, setArrival] = useState('za 30 min');
+  const [remoteReplies, setRemoteReplies] = useState<ActivityVote[]>([]);
+  const [editingPlan, setEditingPlan] = useState(false);
   const [storageReady, setStorageReady] = useState(false);
-  const lastRestaurantRef = useRef('');
+  const [roundNotice, setRoundNotice] = useState('');
+  const planSnapshot = useRef({ place: '', time: '12:30', note: '' });
+  const replySnapshot = useRef({ reply: 'Jdu' as PivoState['reply'], arrival: 'za 30 min' });
+  const roundNoticeTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   const toggleRestaurant = (restaurantName: string) => {
     setExpandedRestaurants((current) =>
@@ -893,13 +1000,37 @@ function ObedScreen({
   useEffect(() => {
     let mounted = true;
 
-    loadJson<string>(storageKeys.obedVote).then((savedChoice) => {
+    loadJson<Partial<{ place: string; time: string; note: string; reply: PivoState['reply']; arrival: string }> | string>(
+      storageKeys.obedState,
+    ).then((savedState) => {
       if (!mounted) {
         return;
       }
 
-      setSelectedRestaurant(typeof savedChoice === 'string' ? savedChoice : '');
-      lastRestaurantRef.current = typeof savedChoice === 'string' ? savedChoice : '';
+      if (typeof savedState === 'string') {
+        setPlace(savedState);
+        planSnapshot.current = { place: savedState, time: '12:30', note: '' };
+      } else {
+        setPlace(typeof savedState?.place === 'string' ? savedState.place : '');
+        setTime(typeof savedState?.time === 'string' ? savedState.time : '12:30');
+        setNote(typeof savedState?.note === 'string' ? savedState.note : '');
+        planSnapshot.current = {
+          place: typeof savedState?.place === 'string' ? savedState.place : '',
+          time: typeof savedState?.time === 'string' ? savedState.time : '12:30',
+          note: typeof savedState?.note === 'string' ? savedState.note : '',
+        };
+      }
+
+      loadJson<string>(storageKeys.obedVote).then((savedLegacyChoice) => {
+        if (!mounted || savedState) {
+          return;
+        }
+
+        if (typeof savedLegacyChoice === 'string' && savedLegacyChoice.trim()) {
+          setPlace(savedLegacyChoice);
+          planSnapshot.current = { place: savedLegacyChoice, time: '12:30', note: '' };
+        }
+      });
       setStorageReady(true);
     });
 
@@ -910,97 +1041,325 @@ function ObedScreen({
 
   useEffect(() => {
     if (storageReady) {
-      saveJson(storageKeys.obedVote, selectedRestaurant);
+      saveJson(storageKeys.obedState, { place, time, note });
     }
-  }, [selectedRestaurant, storageReady]);
+  }, [note, place, storageReady, time]);
+
+  useEffect(() => {
+    if (!storageReady || !canSync) {
+      return;
+    }
+
+    void saveObedSync(partyCode, { place, time, note });
+  }, [canSync, note, partyCode, place, storageReady, time]);
 
   useEffect(() => {
     if (!canSync) {
       return () => {};
     }
 
-    const unsubscribe = subscribeActivityVotesSync(partyCode, 'obed', setRemoteVotes);
+    const unsubscribe = subscribeActivityVotesSync(partyCode, 'obed', setRemoteReplies);
     return unsubscribe;
   }, [canSync, partyCode]);
 
   useEffect(() => {
-    if (!storageReady || !canSync || !viewerId || !selectedRestaurant) {
-      lastRestaurantRef.current = selectedRestaurant;
+    if (!canSync) {
+      return () => {};
+    }
+
+    const unsubscribe = subscribeObedSync(partyCode, (remoteState) => {
+      setPlace(remoteState.place);
+      setTime(remoteState.time);
+      setNote(remoteState.note);
+      planSnapshot.current = {
+        place: remoteState.place,
+        time: remoteState.time,
+        note: remoteState.note,
+      };
+    });
+
+    return unsubscribe;
+  }, [canSync, partyCode]);
+
+  useEffect(() => {
+    if (!viewerId) {
       return;
     }
 
-    if (lastRestaurantRef.current === selectedRestaurant) {
+    const ownVote = remoteReplies.find((person) => person.uid === viewerId);
+
+    if (!ownVote) {
       return;
+    }
+
+    const nextReply = ownVote.choice === 'Možná' || ownVote.choice === 'Dnes ne' ? ownVote.choice : 'Jdu';
+    const nextArrival = typeof ownVote.arrival === 'string' && ownVote.arrival.trim() ? ownVote.arrival : 'za 30 min';
+
+    setReply(nextReply);
+    setArrival(nextArrival);
+    replySnapshot.current = { reply: nextReply, arrival: nextArrival };
+  }, [remoteReplies, viewerId]);
+
+  const visibleReplies = remoteReplies;
+  const goingCount = visibleReplies.filter((person) => person.choice === 'Jdu').length;
+  const maybeCount = visibleReplies.filter((person) => person.choice === 'Možná').length;
+  const awayCount = visibleReplies.filter((person) => person.choice === 'Dnes ne').length;
+
+  useEffect(() => {
+    return () => {
+      if (roundNoticeTimer.current) {
+        clearTimeout(roundNoticeTimer.current);
+      }
+    };
+  }, []);
+
+  useEffect(() => {
+    if (!storageReady || !canSync || !viewerId) {
+      replySnapshot.current = { reply, arrival };
+      return;
+    }
+
+    const previous = replySnapshot.current;
+
+    if (previous.reply !== reply) {
+      void recordPartyEventSync({
+        partyCode,
+        type: 'obed.reply',
+        activity: 'obed',
+        actorUid: viewerId,
+        actorName: viewerName,
+        title: `${viewerName} odpověděl na oběd`,
+        body: `Oběd: ${viewerName} změnil odpověď na ${reply}.`,
+      });
+    }
+
+    if (reply === 'Jdu' && previous.arrival !== arrival) {
+      void recordPartyEventSync({
+        partyCode,
+        type: 'obed.arrival',
+        activity: 'obed',
+        actorUid: viewerId,
+        actorName: viewerName,
+        title: `${viewerName} změnil čas oběda`,
+        body: `Oběd: ${viewerName} přijde ${arrival}.`,
+      });
     }
 
     void saveActivityVoteSync(partyCode, 'obed', {
       uid: viewerId,
       displayName: viewerName,
-      choice: selectedRestaurant,
+      choice: reply,
+      arrival: reply === 'Jdu' ? arrival : undefined,
       updatedAt: new Date().toISOString(),
     });
 
-    void recordPartyEventSync({
-      partyCode,
-      type: 'obed.vote',
-      activity: 'obed',
-      actorUid: viewerId,
-      actorName: viewerName,
-      title: `${viewerName} hlasoval pro ${selectedRestaurant}`,
-      body: `Oběd: ${viewerName} hlasoval pro ${selectedRestaurant}.`,
-    });
+    replySnapshot.current = { reply, arrival };
+  }, [arrival, canSync, partyCode, reply, storageReady, viewerId, viewerName]);
 
-    lastRestaurantRef.current = selectedRestaurant;
-  }, [canSync, partyCode, selectedRestaurant, storageReady, viewerId, viewerName]);
+  const handleSavePlan = () => {
+    const nextPlan = { place, time, note };
+    const previousPlan = planSnapshot.current;
 
-  const visibleVotes: ActivityVote[] = canSync
-    ? [
-        ...remoteVotes.filter((vote) => vote.uid !== viewerId),
-        ...(selectedRestaurant
-          ? [
-              {
-                uid: viewerId || 'local',
-                displayName: viewerName,
-                choice: selectedRestaurant,
-                updatedAt: new Date().toISOString(),
-              },
-            ]
-          : []),
-      ]
-    : selectedRestaurant
-      ? [
-          {
-            uid: 'local',
-            displayName: viewerName,
-            choice: selectedRestaurant,
-            updatedAt: new Date().toISOString(),
-          },
-        ]
-      : [];
+    if (
+      canSync &&
+      viewerId &&
+      (previousPlan.place !== nextPlan.place || previousPlan.time !== nextPlan.time || previousPlan.note !== nextPlan.note)
+    ) {
+      void recordPartyEventSync({
+        partyCode,
+        type: 'obed.plan',
+        activity: 'obed',
+        actorUid: viewerId,
+        actorName: viewerName,
+        title: `${viewerName} upravil oběd plán`,
+        body: `Oběd: ${viewerName} upravil plán na ${nextPlan.place || 'místo'} · ${nextPlan.time || 'čas'} · ${
+          nextPlan.note || 'bez poznámky'
+        }.`,
+      });
+    }
 
-  const voteCounts = useMemo(() => {
-    const counts = new Map<string, number>();
+    planSnapshot.current = nextPlan;
+    setEditingPlan(false);
+  };
 
-    visibleVotes.forEach((vote) => {
-      counts.set(vote.choice, (counts.get(vote.choice) ?? 0) + 1);
-    });
+  const announceRound = () => {
+    if (roundNoticeTimer.current) {
+      clearTimeout(roundNoticeTimer.current);
+    }
 
-    return counts;
-  }, [visibleVotes]);
+    if (canSync && viewerId) {
+      void recordPartyEventSync({
+        partyCode,
+        type: 'obed.round',
+        activity: 'obed',
+        actorUid: viewerId,
+        actorName: viewerName,
+        title: `${viewerName} vyhlásil oběd`,
+        body: `Oběd: ${viewerName} spustil obědový round.`,
+      });
+    }
+
+    setRoundNotice('Posláno partě');
+    roundNoticeTimer.current = setTimeout(() => {
+      setRoundNotice('');
+    }, 2200);
+  };
 
   return (
     <>
       <View style={styles.statusPanelLight}>
         <Text style={styles.label}>Dnes</Text>
-        <Text style={styles.darkStatusTitle}>Dnešní meníčka</Text>
+        <Text style={styles.darkStatusTitle}>Dáme oběd?</Text>
         <Text style={styles.darkStatusText}>
-          {restaurantsWithMenu.length} podniků s obědovou nabídkou ·{' '}
-          {selectedRestaurant ? `hlasuješ pro ${selectedRestaurant}` : 'vyber si, kam jít'}
+          {place
+            ? `${place} · ${time || 'čas se domluví'} · ${restaurantsWithMenu.length} podniků s obědovou nabídkou`
+            : `${restaurantsWithMenu.length} podniků s obědovou nabídkou · vyber místo, čas nebo jen procházej menu`}
         </Text>
+        <Text style={styles.darkStatusText}>Host nastaví plán. Ostatní jen odpoví níže.</Text>
+        {!!roundNotice && <Text style={styles.roundNoticeText}>{roundNotice}</Text>}
       </View>
-      <ActivityPanel title="Oběd" action="Dáme oběd?" accent={accent} icon="silverware-fork-knife">
+      <ActivityPanel
+        title="Oběd"
+        action="Dáme oběd?"
+        accent={accent}
+        icon="silverware-fork-knife"
+        onActionPress={announceRound}
+      >
         <View style={styles.cardList}>
-          <Text style={styles.subsectionTitle}>Vyškov · podobně jako na webu</Text>
+          <Text style={styles.subsectionTitle}>Vyhlášení oběda</Text>
+          <View style={styles.restaurantCard}>
+            <View style={styles.planHeader}>
+              <View style={styles.planIcon}>
+                <MaterialCommunityIcons name="silverware-fork-knife" size={26} color="#0F766E" />
+              </View>
+              <View style={styles.planCopy}>
+                <Text style={styles.cardTitle}>{place || 'Místo není vybráno'}</Text>
+                <Text style={styles.cardMeta}>
+                  {time || 'čas se domluví'} · {reply === 'Jdu' ? `dorazíš ${arrival}` : reply}
+                </Text>
+              </View>
+            </View>
+            <Text style={styles.cardMeta}>Tady upravuje plán člověk, který oběd vyhlásil.</Text>
+            {!!note && <Text style={styles.cardText}>{note}</Text>}
+            <View style={styles.planActions}>
+              <Pressable onPress={() => setEditingPlan((value) => !value)}>
+                <Text style={styles.voteText}>{editingPlan ? 'Sbalit plán' : 'Upravit plán'}</Text>
+              </Pressable>
+              <Text style={styles.voteText}>Sdílet</Text>
+            </View>
+            <Text style={styles.localSaveText}>
+              {canSync ? 'Sdíleno přes Firebase' : 'Uloženo jen v tomhle telefonu'}
+            </Text>
+          </View>
+
+          {editingPlan && (
+            <View style={styles.restaurantCard}>
+              <View style={styles.formField}>
+                <Text style={styles.inputLabel}>Kde?</Text>
+                <TextInput
+                  value={place}
+                  onChangeText={setPlace}
+                  placeholder="Napiš podnik nebo místo"
+                  placeholderTextColor="#9CA3AF"
+                  style={styles.textInput}
+                />
+              </View>
+              <View style={styles.formField}>
+                <Text style={styles.inputLabel}>Kdy?</Text>
+                <TextInput
+                  value={time}
+                  onChangeText={setTime}
+                  placeholder="Teď, 12:30, odpoledne..."
+                  placeholderTextColor="#9CA3AF"
+                  style={styles.textInput}
+                />
+              </View>
+              <View style={styles.formField}>
+                <Text style={styles.inputLabel}>Poznámka</Text>
+                <TextInput
+                  value={note}
+                  onChangeText={setNote}
+                  placeholder="Třeba: jen na jedno"
+                  placeholderTextColor="#9CA3AF"
+                  style={styles.textInput}
+                />
+              </View>
+              <View style={styles.planActions}>
+                <Pressable style={[styles.primaryButton, styles.inlineActionButton]} onPress={handleSavePlan}>
+                  <MaterialCommunityIcons name="check" size={18} color="#1F2937" />
+                  <Text style={styles.primaryButtonText}>Uložit plán</Text>
+                </Pressable>
+                <Pressable
+                  style={[styles.smallGhostButton, styles.inlineActionButton]}
+                  onPress={() => setEditingPlan(false)}
+                >
+                  <Text style={styles.voteText}>Zrušit</Text>
+                </Pressable>
+              </View>
+            </View>
+          )}
+
+          <Text style={styles.subsectionTitle}>Moje odpověď</Text>
+          <View style={styles.restaurantCard}>
+            <Text style={styles.cardMeta}>Tohle je pro účastníky. Host sem nic neřeší.</Text>
+            <View style={styles.replyRow}>
+              {(['Jdu', 'Možná', 'Dnes ne'] as const).map((option) => {
+                const isActive = reply === option;
+
+                return (
+                  <Pressable
+                    key={option}
+                    onPress={() => setReply(option)}
+                    style={[styles.replyButton, isActive && styles.replyButtonActive]}
+                  >
+                    <Text style={[styles.replyButtonText, isActive && styles.replyButtonTextActive]}>
+                      {option}
+                    </Text>
+                  </Pressable>
+                );
+              })}
+            </View>
+
+            {reply === 'Jdu' && (
+              <>
+                <Text style={styles.inputLabel}>Kdy dorazíš?</Text>
+                <View style={styles.arrivalRow}>
+                  {['Teď', 'Za 15 min', 'Za 30 min', 'V 19:30'].map((option) => {
+                    const isActive = arrival === option;
+
+                    return (
+                      <Pressable
+                        key={option}
+                        onPress={() => setArrival(option)}
+                        style={[styles.arrivalChip, isActive && styles.arrivalChipActive]}
+                      >
+                        <Text style={[styles.arrivalChipText, isActive && styles.arrivalChipTextActive]}>
+                          {option}
+                        </Text>
+                      </Pressable>
+                    );
+                  })}
+                </View>
+              </>
+            )}
+          </View>
+
+          <Text style={styles.subsectionTitle}>
+            {`Kdo jde${remoteReplies.length ? ` · ${goingCount} jdou · ${maybeCount} možná · ${awayCount} ne` : ''}`}
+          </Text>
+          {visibleReplies.map((person) => (
+            <View key={`${person.uid}-${person.choice}`} style={styles.rowCard}>
+              <View>
+                <Text style={styles.cardText}>{person.displayName}</Text>
+                {!!person.arrival && <Text style={styles.cardMeta}>dorazí {person.arrival}</Text>}
+              </View>
+              <Text style={person.choice === 'Jdu' ? styles.goingStatus : styles.maybeStatus}>
+                {person.choice}
+              </Text>
+            </View>
+          ))}
+
+          <Text style={styles.subsectionTitle}>Meníčka.cz přehled</Text>
           {restaurantsWithMenu.map((restaurant) => {
             const isExpanded = expandedRestaurants.includes(restaurant.name);
 
@@ -1046,27 +1405,6 @@ function ObedScreen({
                 ) : (
                   <Text style={styles.collapsedMenuHint}>Klepni pro zobrazení meníčka</Text>
                 )}
-
-                <View style={styles.restaurantActions}>
-                  <Pressable
-                    onPress={() => setSelectedRestaurant(restaurant.name)}
-                    style={[
-                      styles.voteButton,
-                      selectedRestaurant === restaurant.name && styles.voteButtonActive,
-                    ]}
-                  >
-                    <Text
-                      style={[
-                        styles.voteButtonText,
-                        selectedRestaurant === restaurant.name && styles.voteButtonTextActive,
-                      ]}
-                    >
-                      {selectedRestaurant === restaurant.name ? 'Tvůj hlas' : 'Hlasovat'}
-                    </Text>
-                  </Pressable>
-                  <Text style={styles.voteCountText}>{voteCounts.get(restaurant.name) ?? 0} hlasů</Text>
-                  <Text style={styles.voteText}>Otevřít na Meníčka.cz</Text>
-                </View>
               </View>
             );
           })}
@@ -1104,20 +1442,25 @@ function PivoScreen({
   canSync,
   viewerId,
   viewerName,
+  partyMembers,
 }: {
   accent: string;
   partyCode: string;
   canSync: boolean;
   viewerId: string | null;
   viewerName: string;
+  partyMembers: PartyMember[];
 }) {
   const [place, setPlace] = useState(defaultPivoState.place);
   const [time, setTime] = useState(defaultPivoState.time);
   const [note, setNote] = useState(defaultPivoState.note);
   const [reply, setReply] = useState<PivoState['reply']>(defaultPivoState.reply);
   const [arrival, setArrival] = useState(defaultPivoState.arrival);
+  const [remoteVotes, setRemoteVotes] = useState<ActivityVote[]>([]);
   const [editingPlan, setEditingPlan] = useState(false);
   const [storageReady, setStorageReady] = useState(false);
+  const [roundAnnounced, setRoundAnnounced] = useState(false);
+  const [roundNotice, setRoundNotice] = useState('');
   const arrivalOptions = ['Teď', 'Za 15 min', 'Za 30 min', 'V 19:30'];
   const planSnapshot = useRef({
     place: defaultPivoState.place,
@@ -1150,6 +1493,7 @@ function PivoScreen({
         reply: nextState.reply,
         arrival: nextState.arrival,
       };
+      setRoundAnnounced(false);
       setStorageReady(true);
     });
 
@@ -1173,8 +1517,6 @@ function PivoScreen({
       setPlace(remoteState.place);
       setTime(remoteState.time);
       setNote(remoteState.note);
-      setReply(remoteState.reply);
-      setArrival(remoteState.arrival);
       suppressPivoEvent.current = true;
     });
 
@@ -1182,10 +1524,58 @@ function PivoScreen({
   }, [canSync, partyCode]);
 
   useEffect(() => {
-    if (storageReady && canSync) {
-      void savePivoSync(partyCode, { place, time, note, reply, arrival });
+    if (!canSync) {
+      return () => {};
     }
-  }, [arrival, canSync, note, partyCode, place, reply, storageReady, time]);
+
+    const unsubscribe = subscribeActivityVotesSync(partyCode, 'pivo', setRemoteVotes);
+    return unsubscribe;
+  }, [canSync, partyCode]);
+
+  useEffect(() => {
+    if (!viewerId) {
+      return;
+    }
+
+    const ownVote = remoteVotes.find((person) => person.uid === viewerId);
+
+    if (!ownVote) {
+      return;
+    }
+
+    const nextReply = ownVote.choice === 'Možná' || ownVote.choice === 'Dnes ne' ? ownVote.choice : 'Jdu';
+    const nextArrival = typeof ownVote.arrival === 'string' && ownVote.arrival.trim() ? ownVote.arrival : 'za 30 min';
+
+    setReply(nextReply);
+    setArrival(nextArrival);
+    pivoSnapshot.current = { reply: nextReply, arrival: nextArrival };
+  }, [remoteVotes, viewerId]);
+
+  useEffect(() => {
+    if (storageReady && canSync) {
+      void savePivoSync(partyCode, { place, time, note, reply: 'Jdu', arrival: 'za 30 min' });
+    }
+  }, [canSync, note, partyCode, place, storageReady, time]);
+
+  const announceRound = () => {
+    if (canSync && viewerId) {
+      void recordPartyEventSync({
+        partyCode,
+        type: 'pivo.round',
+        activity: 'pivo',
+        actorUid: viewerId,
+        actorName: viewerName,
+        title: `${viewerName} vyhlásil pivo`,
+        body: `Pivo: ${viewerName} spustil pivo partu.`,
+      });
+    }
+
+    setRoundAnnounced(true);
+    setRoundNotice('Posláno partě');
+    setTimeout(() => {
+      setRoundNotice('');
+    }, 2200);
+  };
 
   const handleSavePlan = () => {
     const nextPlan = { place, time, note };
@@ -1251,21 +1641,89 @@ function PivoScreen({
       });
     }
 
+    void saveActivityVoteSync(partyCode, 'pivo', {
+      uid: viewerId,
+      displayName: viewerName,
+      choice: reply,
+      arrival: reply === 'Jdu' ? arrival : undefined,
+      updatedAt: new Date().toISOString(),
+    });
+
     pivoSnapshot.current = { reply, arrival };
   }, [arrival, canSync, partyCode, reply, storageReady, viewerId, viewerName]);
+
+  const visibleVotes: ActivityVote[] = canSync
+    ? partyMembers.map((member) => {
+        const remoteVote = remoteVotes.find((vote) => vote.uid === member.uid);
+
+        if (remoteVote) {
+          return remoteVote;
+        }
+
+        if (member.uid === viewerId) {
+          return {
+            uid: viewerId || 'local',
+            displayName: viewerName,
+            choice: reply,
+            arrival: reply === 'Jdu' ? arrival : undefined,
+            updatedAt: new Date().toISOString(),
+          };
+        }
+
+        return {
+          uid: member.uid,
+          displayName: member.displayName,
+          choice: 'Čeká',
+          updatedAt: new Date().toISOString(),
+        };
+      }).concat(
+        remoteVotes.filter((vote) => !partyMembers.some((member) => member.uid === vote.uid)),
+      )
+    : [
+        {
+          uid: 'local',
+          displayName: viewerName,
+          choice: reply,
+          arrival: reply === 'Jdu' ? arrival : undefined,
+          updatedAt: new Date().toISOString(),
+        },
+      ];
+
+  const voteCounts = useMemo(() => {
+    const counts = new Map<string, number>();
+
+    visibleVotes.forEach((vote) => {
+      if (vote.choice === 'Jdu' || vote.choice === 'Možná' || vote.choice === 'Dnes ne') {
+        counts.set(vote.choice, (counts.get(vote.choice) ?? 0) + 1);
+      }
+    });
+
+    return counts;
+  }, [visibleVotes]);
+
+  const topSummary = `${voteCounts.get('Jdu') ?? 0} jdou · ${voteCounts.get('Možná') ?? 0} možná`;
 
   return (
     <>
       <View style={styles.statusPanelLight}>
         <Text style={styles.label}>Dnes</Text>
-        <Text style={styles.darkStatusTitle}>Dáme pivo?</Text>
+        <Text style={styles.darkStatusTitle}>{roundAnnounced ? 'Pivo vyhlášeno' : 'Dáme pivo?'}</Text>
         <Text style={styles.darkStatusText}>
-          Kde: {place || 'není vybráno'} · Kdy: {time || 'domluví se'}
+          {roundAnnounced
+            ? `Kde: ${place || 'není vybráno'} · Kdy: ${time || 'domluví se'} · ${topSummary}`
+            : 'Pošli to partě a pak uprav místo, čas nebo odpovědi.'}
         </Text>
+        {!!roundNotice && <Text style={styles.roundNoticeText}>{roundNotice}</Text>}
       </View>
-      <ActivityPanel title="Pivo" action="Dáme pivo?" accent={accent} icon="glass-mug-variant">
+      <ActivityPanel
+        title="Pivo"
+        action="Dáme pivo?"
+        accent={accent}
+        icon="glass-mug-variant"
+        onActionPress={announceRound}
+      >
         <View style={styles.cardList}>
-          <Text style={styles.subsectionTitle}>Pivo dneska</Text>
+          <Text style={styles.subsectionTitle}>Uprav plán a odpovědi</Text>
           <View style={styles.restaurantCard}>
             <View style={styles.planHeader}>
               <View style={styles.planIcon}>
@@ -1273,7 +1731,9 @@ function PivoScreen({
               </View>
               <View style={styles.planCopy}>
                 <Text style={styles.cardTitle}>{place || 'Místo není vybráno'}</Text>
-                <Text style={styles.cardMeta}>{time || 'čas se domluví'} · vyhlásil Marek</Text>
+                <Text style={styles.cardMeta}>
+                  {time || 'čas se domluví'} · vyhlášeno
+                </Text>
               </View>
             </View>
             {!!note && <Text style={styles.cardText}>{note}</Text>}
@@ -1375,14 +1835,22 @@ function PivoScreen({
           </View>
 
           <Text style={styles.subsectionTitle}>Stav party</Text>
-          {beerReplies.map((person) => (
-            <View key={person.name} style={styles.rowCard}>
+          {visibleVotes.map((person) => (
+            <View key={person.uid} style={styles.rowCard}>
               <View>
-                <Text style={styles.cardText}>{person.name}</Text>
+                <Text style={styles.cardText}>{person.displayName}</Text>
                 {!!person.arrival && <Text style={styles.cardMeta}>dorazí {person.arrival}</Text>}
               </View>
-              <Text style={person.status === 'Jde' ? styles.goingStatus : styles.maybeStatus}>
-                {person.status}
+              <Text
+                style={
+                  person.choice === 'Jdu'
+                    ? styles.goingStatus
+                    : person.choice === 'Čeká'
+                      ? styles.waitingStatus
+                      : styles.maybeStatus
+                }
+              >
+                {person.choice}
               </Text>
             </View>
           ))}
@@ -1583,6 +2051,12 @@ const styles = StyleSheet.create({
     fontSize: 15,
     lineHeight: 21,
     marginTop: 6,
+  },
+  roundNoticeText: {
+    color: '#0F766E',
+    fontSize: 13,
+    fontWeight: '900',
+    marginTop: 10,
   },
   primaryButton: {
     alignItems: 'center',
@@ -1799,6 +2273,20 @@ const styles = StyleSheet.create({
   fullWidthButton: {
     marginTop: 2,
   },
+  inlineActionButton: {
+    flexGrow: 1,
+  },
+  smallGhostButton: {
+    alignItems: 'center',
+    backgroundColor: '#F9FAFB',
+    borderColor: '#D1D5DB',
+    borderRadius: 8,
+    borderWidth: 1,
+    flexGrow: 1,
+    justifyContent: 'center',
+    minHeight: 48,
+    paddingHorizontal: 14,
+  },
   planHeader: {
     alignItems: 'center',
     flexDirection: 'row',
@@ -1885,6 +2373,11 @@ const styles = StyleSheet.create({
     fontSize: 13,
     fontWeight: '900',
   },
+  waitingStatus: {
+    color: '#6B7280',
+    fontSize: 13,
+    fontWeight: '900',
+  },
   menuRows: {
     borderTopColor: '#E8E2DA',
     borderTopWidth: 1,
@@ -1934,11 +2427,6 @@ const styles = StyleSheet.create({
     lineHeight: 19,
     marginTop: 12,
     padding: 11,
-  },
-  restaurantActions: {
-    flexDirection: 'row',
-    flexWrap: 'wrap',
-    gap: 14,
   },
   cardTitle: {
     color: '#111827',
@@ -1991,11 +2479,28 @@ const styles = StyleSheet.create({
   voteButtonTextActive: {
     color: '#FFFFFF',
   },
-  voteCountText: {
-    color: '#6B7280',
-    fontSize: 13,
+  pickRestaurantButton: {
+    alignItems: 'center',
+    backgroundColor: '#F3F4F6',
+    borderColor: '#D1D5DB',
+    borderRadius: 8,
+    borderWidth: 1,
+    justifyContent: 'center',
+    minHeight: 42,
+    paddingHorizontal: 12,
+    marginTop: 12,
+  },
+  pickRestaurantButtonActive: {
+    backgroundColor: '#ECFDF5',
+    borderColor: '#86EFAC',
+  },
+  pickRestaurantButtonText: {
+    color: '#374151',
+    fontSize: 14,
     fontWeight: '800',
-    marginTop: 10,
+  },
+  pickRestaurantButtonTextActive: {
+    color: '#166534',
   },
   localSaveText: {
     color: '#6B7280',

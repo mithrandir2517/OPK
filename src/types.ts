@@ -28,6 +28,12 @@ export type SavedMemory = {
   createdAt: string;
 };
 
+export type ObedState = {
+  place: string;
+  time: string;
+  note: string;
+};
+
 export type UserProfile = {
   name: string;
   avatarInitial: string;
@@ -36,10 +42,15 @@ export type UserProfile = {
 };
 
 export type PartyEventType =
-  | 'obed.vote'
+  | 'obed.round'
+  | 'obed.plan'
+  | 'obed.reply'
+  | 'obed.arrival'
+  | 'pivo.round'
   | 'pivo.plan'
   | 'pivo.reply'
   | 'pivo.arrival'
+  | 'kolo.round'
   | 'kolo.vote'
   | 'kolo.arrival'
   | 'party.created'

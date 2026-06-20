@@ -40,6 +40,7 @@ export function KoloScreen({ accent, partyCode, canSync, viewerId, viewerName }:
   const [arrival, setArrival] = useState(defaultVote.arrival);
   const [remoteVotes, setRemoteVotes] = useState<ActivityVote[]>([]);
   const [storageReady, setStorageReady] = useState(false);
+  const [roundAnnounced, setRoundAnnounced] = useState(false);
   const voteSnapshot = useRef<KoloVoteState>(defaultVote);
 
   useEffect(() => {
@@ -54,6 +55,13 @@ export function KoloScreen({ accent, partyCode, canSync, viewerId, viewerName }:
       setChoice(nextVote.choice);
       setArrival(nextVote.arrival);
       voteSnapshot.current = nextVote;
+      loadJson<boolean>(storageKeys.koloRoundStarted).then((savedRound) => {
+        if (!mounted) {
+          return;
+        }
+
+        setRoundAnnounced(savedRound === true);
+      });
       setStorageReady(true);
     });
 
@@ -69,6 +77,12 @@ export function KoloScreen({ accent, partyCode, canSync, viewerId, viewerName }:
   }, [arrival, choice, storageReady]);
 
   useEffect(() => {
+    if (storageReady) {
+      saveJson(storageKeys.koloRoundStarted, roundAnnounced);
+    }
+  }, [roundAnnounced, storageReady]);
+
+  useEffect(() => {
     if (!canSync) {
       return () => {};
     }
@@ -76,6 +90,26 @@ export function KoloScreen({ accent, partyCode, canSync, viewerId, viewerName }:
     const unsubscribe = subscribeActivityVotesSync(partyCode, 'kolo', setRemoteVotes);
     return unsubscribe;
   }, [canSync, partyCode]);
+
+  const announceRound = () => {
+    if (roundAnnounced) {
+      return;
+    }
+
+    setRoundAnnounced(true);
+
+    if (canSync && viewerId) {
+      void recordPartyEventSync({
+        partyCode,
+        type: 'kolo.round',
+        activity: 'kolo',
+        actorUid: viewerId,
+        actorName: viewerName,
+        title: `${viewerName} vyhlásil kolo`,
+        body: `Kolo: ${viewerName} spustil vyjížďku.`,
+      });
+    }
+  };
 
   useEffect(() => {
     if (!storageReady || !canSync || !viewerId) {
@@ -156,12 +190,22 @@ export function KoloScreen({ accent, partyCode, canSync, viewerId, viewerName }:
     <>
       <View style={styles.statusPanelLight}>
         <Text style={styles.label}>Počasí</Text>
-        <Text style={styles.darkStatusTitle}>Dnes to jde</Text>
-        <Text style={styles.darkStatusText}>22 °C · slabý vítr · bez deště · {topSummary}</Text>
+        <Text style={styles.darkStatusTitle}>{roundAnnounced ? 'Kolo běží' : 'Dáme kolo?'}</Text>
+        <Text style={styles.darkStatusText}>
+          {roundAnnounced ? `22 °C · slabý vítr · bez deště · ${topSummary}` : 'Pošli to partě a pak vyber, kdo jede.'}
+        </Text>
       </View>
-      <ActivityPanel title="Kolo" action="Dáme kolo?" accent={accent} icon="bike">
+      <ActivityPanel
+        title="Kolo"
+        action={roundAnnounced ? 'Kolo běží' : 'Dáme kolo?'}
+        accent={accent}
+        icon="bike"
+        onActionPress={announceRound}
+      >
         <View style={styles.cardList}>
-          <Text style={styles.subsectionTitle}>Nejbližší vyjížďka</Text>
+          <Text style={styles.subsectionTitle}>
+            {roundAnnounced ? 'Rozhodni, kdo jede' : 'Nejprve vyhlásit, potom hlasovat'}
+          </Text>
           <View style={styles.menuCard}>
             <Text style={styles.cardTitle}>Okruh po práci</Text>
             <Text style={styles.cardMeta}>Dnes 17:30 · sraz u hospody · 31 km</Text>

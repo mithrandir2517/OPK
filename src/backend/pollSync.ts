@@ -53,5 +53,16 @@ export async function saveActivityVoteSync(
     return;
   }
 
-  await setDoc(doc(voteCollection(partyCode, activity), vote.uid), vote, { merge: true });
+  const payload: Record<string, unknown> = {
+    uid: vote.uid,
+    displayName: vote.displayName,
+    choice: vote.choice,
+    updatedAt: vote.updatedAt,
+  };
+
+  if (typeof vote.arrival === 'string' && vote.arrival.trim()) {
+    payload.arrival = vote.arrival.trim();
+  }
+
+  await setDoc(doc(voteCollection(partyCode, activity), vote.uid), payload, { merge: true });
 }

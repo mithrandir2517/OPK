@@ -92,6 +92,7 @@ exports.sendPartyEventPush = onDocumentCreated('parties/{partyCode}/events/{even
     data: {
       partyCode,
       eventType: payload.type || 'unknown',
+      activity: typeof payload.activity === 'string' ? payload.activity : null,
       actorName,
     },
   }));

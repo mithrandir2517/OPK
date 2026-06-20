@@ -15,7 +15,7 @@ import {
   updateDoc,
 } from 'firebase/firestore';
 import { firestore, firebaseEnabled } from './firebase';
-import { PartyEvent, PartyMember, PartyRef, PartyState, PivoState, SavedMemory } from '../types';
+import { ObedState, PartyEvent, PartyMember, PartyRef, PartyState, PivoState, SavedMemory } from '../types';
 
 function normalizePartyMembers(value: unknown): PartyMember[] {
   if (!Array.isArray(value)) {
@@ -123,6 +123,18 @@ function mapMemoryData(id: string, data: Record<string, unknown>): SavedMemory |
     activity: data.activity,
     text: data.text,
     createdAt: data.createdAt,
+  };
+}
+
+function normalizeObedState(value: Record<string, unknown> | undefined): ObedState | null {
+  if (!value) {
+    return null;
+  }
+
+  return {
+    place: typeof value.place === 'string' ? value.place : '',
+    time: typeof value.time === 'string' ? value.time : '',
+    note: typeof value.note === 'string' ? value.note : '',
   };
 }
 
@@ -311,19 +323,34 @@ export function subscribePivoSync(inviteCode: string, onChange: (pivoState: Pivo
       return;
     }
 
-    const reply = pivoState.reply;
-
-    if (reply !== 'Jdu' && reply !== 'Možná' && reply !== 'Dnes ne') {
-      return;
-    }
-
     onChange({
       place: typeof pivoState.place === 'string' ? pivoState.place : 'Radegastovna Pirát',
       time: typeof pivoState.time === 'string' ? pivoState.time : '19:00',
       note: typeof pivoState.note === 'string' ? pivoState.note : 'jen na jedno',
-      reply,
-      arrival: typeof pivoState.arrival === 'string' ? pivoState.arrival : 'za 30 min',
+      reply: 'Jdu',
+      arrival: 'za 30 min',
     });
+  });
+}
+
+export function subscribeObedSync(inviteCode: string, onChange: (obedState: ObedState) => void) {
+  if (!firebaseEnabled || !firestore) {
+    return () => {};
+  }
+
+  return onSnapshot(doc(firestore, 'parties', inviteCode), (snapshot) => {
+    if (!snapshot.exists()) {
+      return;
+    }
+
+    const data = snapshot.data() as Record<string, unknown>;
+    const obedState = normalizeObedState(data.obedState as Record<string, unknown> | undefined);
+
+    if (!obedState) {
+      return;
+    }
+
+    onChange(obedState);
   });
 }
 
@@ -339,8 +366,25 @@ export async function savePivoSync(inviteCode: string, pivoState: PivoState) {
         place: pivoState.place,
         time: pivoState.time,
         note: pivoState.note,
-        reply: pivoState.reply,
-        arrival: pivoState.arrival,
+      },
+      updatedAt: serverTimestamp(),
+    },
+    { merge: true },
+  );
+}
+
+export async function saveObedSync(inviteCode: string, obedState: ObedState) {
+  if (!firebaseEnabled || !firestore) {
+    return;
+  }
+
+  await setDoc(
+    doc(firestore, 'parties', inviteCode),
+    {
+      obedState: {
+        place: obedState.place,
+        time: obedState.time,
+        note: obedState.note,
       },
       updatedAt: serverTimestamp(),
     },
