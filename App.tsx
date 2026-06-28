@@ -61,14 +61,10 @@ const defaultProfile: UserProfile = {
   notificationsEnabled: true,
 };
 const defaultParty: PartyState = {
-  name: 'Parta Vyškov',
-  city: 'Vyškov',
-  members: [
-    { uid: 'legacy-marek', displayName: 'Marek', source: 'legacy' },
-    { uid: 'legacy-tomas', displayName: 'Tomáš', source: 'legacy' },
-    { uid: 'legacy-pavel', displayName: 'Pavel', source: 'legacy' },
-  ],
-  inviteCode: 'OPK-VYSKOV',
+  name: '',
+  city: '',
+  members: [],
+  inviteCode: '',
   creatorUid: null,
 };
 
@@ -163,15 +159,29 @@ function normalizePartyMembers(value: unknown): PartyMember[] {
 
 function normalizeParty(value: Partial<PartyState> | null): PartyState {
   return {
-    name: typeof value?.name === 'string' ? value.name : defaultParty.name,
-    city: typeof value?.city === 'string' ? value.city : defaultParty.city,
+    name: typeof value?.name === 'string' ? value.name : '',
+    city: typeof value?.city === 'string' ? value.city : '',
     members: normalizePartyMembers(value?.members),
     creatorUid: typeof value?.creatorUid === 'string' && value.creatorUid.trim() ? value.creatorUid : null,
     inviteCode:
       typeof value?.inviteCode === 'string' && value.inviteCode.trim()
         ? value.inviteCode
-        : defaultParty.inviteCode,
+        : '',
   };
+}
+
+function isLegacyPlaceholderParty(value: Partial<PartyState> | null) {
+  return (
+    value?.name === 'Parta Vyškov' &&
+    value?.city === 'Vyškov' &&
+    value?.inviteCode === 'OPK-VYSKOV' &&
+    Array.isArray(value?.members) &&
+    value.members.some((member) =>
+      typeof member === 'string'
+        ? ['Marek', 'Tomáš', 'Pavel'].includes(member)
+        : !!member && typeof member === 'object' && typeof (member as Record<string, unknown>).displayName === 'string',
+    )
+  );
 }
 
 function normalizePartyCode(value: string) {
@@ -308,7 +318,12 @@ export default function App() {
 
       if (mounted) {
         setProfile(normalizeProfile(savedProfile));
-        setParty(normalizeParty(savedParty));
+        if (isLegacyPlaceholderParty(savedParty)) {
+          setParty(defaultParty);
+          void removeJson(storageKeys.party);
+        } else {
+          setParty(normalizeParty(savedParty));
+        }
         setStorageReady(true);
       }
     });
