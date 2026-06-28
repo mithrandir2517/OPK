@@ -158,15 +158,18 @@ function normalizePartyMembers(value: unknown): PartyMember[] {
 }
 
 function normalizeParty(value: Partial<PartyState> | null): PartyState {
+  const inviteCode = typeof value?.inviteCode === 'string' ? value.inviteCode.trim() : '';
+
+  if (!inviteCode) {
+    return defaultParty;
+  }
+
   return {
     name: typeof value?.name === 'string' ? value.name : '',
     city: typeof value?.city === 'string' ? value.city : '',
     members: normalizePartyMembers(value?.members),
     creatorUid: typeof value?.creatorUid === 'string' && value.creatorUid.trim() ? value.creatorUid : null,
-    inviteCode:
-      typeof value?.inviteCode === 'string' && value.inviteCode.trim()
-        ? value.inviteCode
-        : '',
+    inviteCode,
   };
 }
 
@@ -333,7 +336,7 @@ export default function App() {
 
       if (mounted) {
         setProfile(normalizeProfile(savedProfile));
-        if (isLegacyPlaceholderParty(savedParty)) {
+        if (isLegacyPlaceholderParty(savedParty) || !savedParty?.inviteCode?.trim()) {
           setParty(defaultParty);
           void removeJson(storageKeys.party);
         } else {
