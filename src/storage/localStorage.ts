@@ -33,3 +33,7 @@ export async function loadJson<T>(key: string): Promise<T | null> {
 export async function saveJson<T>(key: string, value: T) {
   await AsyncStorage.setItem(key, JSON.stringify(value));
 }
+
+export async function removeJson(key: string) {
+  await AsyncStorage.removeItem(key);
+}

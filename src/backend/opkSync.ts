@@ -23,6 +23,7 @@ function normalizePartyMembers(value: unknown): PartyMember[] {
   }
 
   const mapped: PartyMember[] = [];
+  const seen = new Set<string>();
 
   value.forEach((member, index) => {
     if (typeof member === 'string') {
@@ -68,21 +69,21 @@ function normalizePartyMembers(value: unknown): PartyMember[] {
     }
   });
 
-  return mapped;
+  return mapped.filter((member) => {
+    if (seen.has(member.uid)) {
+      return false;
+    }
+
+    seen.add(member.uid);
+    return true;
+  });
 }
 
 function mapPartyData(inviteCode: string, data: Record<string, unknown>): PartyState {
   return {
     name: typeof data.name === 'string' ? data.name : 'Parta Vyškov',
     city: typeof data.city === 'string' ? data.city : 'Vyškov',
-    members:
-      normalizePartyMembers(data.members).length > 0
-        ? normalizePartyMembers(data.members)
-        : [
-            { uid: 'legacy-marek', displayName: 'Marek', email: null, source: 'legacy' },
-            { uid: 'legacy-tomas', displayName: 'Tomáš', email: null, source: 'legacy' },
-            { uid: 'legacy-pavel', displayName: 'Pavel', email: null, source: 'legacy' },
-          ],
+    members: normalizePartyMembers(data.members),
     inviteCode: typeof data.inviteCode === 'string' && data.inviteCode.trim() ? data.inviteCode : inviteCode,
     creatorUid: typeof data.creatorUid === 'string' && data.creatorUid.trim() ? data.creatorUid : null,
   };

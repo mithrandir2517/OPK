@@ -8,6 +8,7 @@ type PartyScreenProps = {
   onBack: () => void;
   party: PartyState;
   partyRefs: PartyRef[];
+  showEmptyState: boolean;
   expandedPartyCode: string | null;
   viewerUid: string | null;
   canSync: boolean;
@@ -26,6 +27,7 @@ export function PartyScreen({
   onBack,
   party,
   partyRefs,
+  showEmptyState,
   expandedPartyCode,
   viewerUid,
   canSync,
@@ -165,20 +167,30 @@ export function PartyScreen({
         <BackToOpk onPress={onBack} />
       </View>
 
-      <View style={styles.stackCard}>
-        <View style={styles.listHeader}>
-          <View>
-            <Text style={styles.formTitle}>Party</Text>
-            <Text style={styles.stackMeta}>{partyRefs.length || 1} sdílených skupin</Text>
+        <View style={styles.stackCard}>
+          <View style={styles.listHeader}>
+            <View>
+              <Text style={styles.formTitle}>Party</Text>
+              <Text style={styles.stackMeta}>{partyRefs.length} skupin</Text>
+            </View>
+            <View style={styles.stackPills}>
+              <Text style={styles.syncBadge}>{canSync ? 'Firebase' : 'Lokálně'}</Text>
+              <Text style={styles.listCount}>{partyRefs.length}</Text>
+            </View>
           </View>
-          <View style={styles.stackPills}>
-            <Text style={styles.syncBadge}>{canSync ? 'Firebase' : 'Lokálně'}</Text>
-            <Text style={styles.listCount}>{partyRefs.length}</Text>
-          </View>
-        </View>
 
-        <View style={styles.partyList}>
-          {visiblePartyRows.map((item) => {
+        {showEmptyState ? (
+          <View style={styles.emptyStateCard}>
+            <Text style={styles.formTitle}>Žádná party</Text>
+            <Text style={styles.cardText}>Vytvoř novou, nebo se připoj přes kód.</Text>
+            <View style={styles.emptyStatePills}>
+              <Text style={styles.syncBadge}>{canSync ? 'Sdílení připravené' : 'Jen lokálně'}</Text>
+              <Text style={styles.syncHint}>Sdílené skupiny se ukážou tady.</Text>
+            </View>
+          </View>
+        ) : (
+          <View style={styles.partyList}>
+            {visiblePartyRows.map((item) => {
             const isActive = item.inviteCode === activePartyCode;
 
             return isActive ? (
@@ -322,14 +334,15 @@ export function PartyScreen({
                 <Text style={styles.partyRowAction}>Otevřít</Text>
               </Pressable>
             );
-          })}
-        </View>
+            })}
+          </View>
+        )}
       </View>
 
-      <View style={styles.actionGrid}>
+        <View style={styles.actionGrid}>
         <View style={styles.actionCard}>
           <Text style={styles.formTitle}>Nová party</Text>
-          <Text style={styles.cardText}>Založí novou sdílenou partu z aktuálního názvu a města.</Text>
+          <Text style={styles.cardText}>Vytvoří novou partu.</Text>
           <Pressable style={[styles.shareButton, styles.shareButtonPrimary]} onPress={onCreateParty}>
             <Text style={styles.shareButtonPrimaryText}>Vytvořit</Text>
           </Pressable>
@@ -337,7 +350,7 @@ export function PartyScreen({
 
         <View style={styles.actionCard}>
           <Text style={styles.formTitle}>Připojit se</Text>
-          <Text style={styles.cardText}>Zadej kód od kamaráda a načti jeho partu na tento telefon.</Text>
+          <Text style={styles.cardText}>Zadej kód party.</Text>
           <View style={styles.formField}>
             <Text style={styles.inputLabel}>Kód party</Text>
             <TextInput
@@ -356,8 +369,8 @@ export function PartyScreen({
             {syncError
               ? `Firebase chyba: ${syncError}`
               : isJoining && joinTargetCode
-              ? `Načítám partu z kódu ${joinTargetCode}.`
-              : 'Po vytvoření se sdílený kód objeví tady.'}
+              ? `Načítám ${joinTargetCode}.`
+              : 'Kód se zobrazí po vytvoření.'}
           </Text>
         </View>
       </View>
@@ -379,18 +392,18 @@ const styles = StyleSheet.create({
   },
   activePartyCard: {
     backgroundColor: '#FFFFFF',
-    borderColor: '#E1DBD2',
-    borderRadius: 8,
+    borderColor: '#E7E5E4',
+    borderRadius: 14,
     borderWidth: 1,
     padding: 16,
   },
   stackCard: {
     backgroundColor: '#FFFFFF',
-    borderColor: '#E1DBD2',
-    borderRadius: 8,
+    borderColor: '#E7E5E4',
+    borderRadius: 14,
     borderWidth: 1,
     gap: 12,
-    padding: 14,
+    padding: 16,
   },
   stackMeta: {
     color: '#6B7280',
@@ -405,11 +418,11 @@ const styles = StyleSheet.create({
   },
   activeCard: {
     backgroundColor: '#FFFFFF',
-    borderColor: '#D9E6DE',
-    borderRadius: 8,
+    borderColor: '#E7E5E4',
+    borderRadius: 14,
     borderWidth: 1,
     gap: 12,
-    padding: 14,
+    padding: 16,
   },
   activeCardHeader: {
     alignItems: 'flex-start',
@@ -437,7 +450,7 @@ const styles = StyleSheet.create({
   },
   activePartyTitle: {
     color: '#111827',
-    fontSize: 24,
+    fontSize: 22,
     fontWeight: '900',
     marginTop: 6,
   },
@@ -462,14 +475,14 @@ const styles = StyleSheet.create({
     marginTop: 12,
   },
   syncBadge: {
-    backgroundColor: '#DCFCE7',
-    borderRadius: 6,
+    backgroundColor: '#F3F4F6',
+    borderRadius: 999,
     color: '#166534',
     fontSize: 12,
     fontWeight: '900',
     overflow: 'hidden',
-    paddingHorizontal: 8,
-    paddingVertical: 4,
+    paddingHorizontal: 10,
+    paddingVertical: 5,
   },
   syncHint: {
     color: '#6B7280',
@@ -496,8 +509,10 @@ const styles = StyleSheet.create({
   },
   memberChip: {
     alignItems: 'center',
-    backgroundColor: '#F4F1EA',
-    borderRadius: 8,
+    backgroundColor: '#F9FAFB',
+    borderRadius: 999,
+    borderColor: '#E5E7EB',
+    borderWidth: 1,
     flexDirection: 'row',
     gap: 6,
     overflow: 'hidden',
@@ -528,11 +543,11 @@ const styles = StyleSheet.create({
   },
   formCard: {
     backgroundColor: '#FFFFFF',
-    borderColor: '#E1DBD2',
-    borderRadius: 8,
+    borderColor: '#E7E5E4',
+    borderRadius: 14,
     borderWidth: 1,
     gap: 12,
-    padding: 14,
+    padding: 16,
   },
   formTitle: {
     color: '#111827',
@@ -548,9 +563,9 @@ const styles = StyleSheet.create({
     fontWeight: '900',
   },
   textInput: {
-    backgroundColor: '#FBFAF8',
-    borderColor: '#E1DBD2',
-    borderRadius: 8,
+    backgroundColor: '#F9FAFB',
+    borderColor: '#E5E7EB',
+    borderRadius: 12,
     borderWidth: 1,
     color: '#111827',
     fontSize: 16,
@@ -569,26 +584,26 @@ const styles = StyleSheet.create({
   },
   addMemberButton: {
     alignItems: 'center',
-    backgroundColor: '#F8B84E',
-    borderColor: '#F6D186',
-    borderRadius: 8,
+    backgroundColor: '#111827',
+    borderColor: '#111827',
+    borderRadius: 999,
     borderWidth: 1,
     justifyContent: 'center',
     minHeight: 46,
     paddingHorizontal: 12,
   },
   addMemberButtonText: {
-    color: '#15251F',
-    fontSize: 14,
+    color: '#FFFFFF',
+    fontSize: 13,
     fontWeight: '900',
   },
   listCard: {
     backgroundColor: '#FFFFFF',
-    borderColor: '#E1DBD2',
-    borderRadius: 8,
+    borderColor: '#E7E5E4',
+    borderRadius: 14,
     borderWidth: 1,
     gap: 12,
-    padding: 14,
+    padding: 16,
   },
   listHeader: {
     alignItems: 'center',
@@ -596,7 +611,7 @@ const styles = StyleSheet.create({
     justifyContent: 'space-between',
   },
   listCount: {
-    backgroundColor: '#F4F1EA',
+    backgroundColor: '#F3F4F6',
     borderRadius: 999,
     color: '#374151',
     fontSize: 12,
@@ -611,9 +626,9 @@ const styles = StyleSheet.create({
   },
   partyRow: {
     alignItems: 'center',
-    backgroundColor: '#FBFAF8',
-    borderColor: '#E1DBD2',
-    borderRadius: 8,
+    backgroundColor: '#FFFFFF',
+    borderColor: '#E7E5E4',
+    borderRadius: 12,
     borderWidth: 1,
     flexDirection: 'row',
     justifyContent: 'space-between',
@@ -621,8 +636,8 @@ const styles = StyleSheet.create({
     padding: 12,
   },
   partyRowActive: {
-    backgroundColor: '#F5F9F7',
-    borderColor: '#9BC1AD',
+    backgroundColor: '#F9FAFB',
+    borderColor: '#D4D4D8',
   },
   partyRowCopy: {
     flex: 1,
@@ -655,22 +670,33 @@ const styles = StyleSheet.create({
   actionGrid: {
     gap: 10,
   },
+  emptyStateCard: {
+    backgroundColor: '#F9FAFB',
+    borderColor: '#E7E5E4',
+    borderRadius: 14,
+    borderWidth: 1,
+    gap: 10,
+    padding: 16,
+  },
+  emptyStatePills: {
+    gap: 8,
+  },
   actionCard: {
     backgroundColor: '#FFFFFF',
-    borderColor: '#E1DBD2',
-    borderRadius: 8,
+    borderColor: '#E7E5E4',
+    borderRadius: 14,
     borderWidth: 1,
     gap: 12,
-    padding: 14,
+    padding: 16,
   },
   editPanel: {
     gap: 12,
     marginTop: 2,
   },
   loadingState: {
-    backgroundColor: '#F4F1EA',
-    borderColor: '#E1DBD2',
-    borderRadius: 8,
+    backgroundColor: '#F9FAFB',
+    borderColor: '#E7E5E4',
+    borderRadius: 12,
     borderWidth: 1,
     paddingHorizontal: 12,
     paddingVertical: 10,
@@ -701,26 +727,26 @@ const styles = StyleSheet.create({
   },
   iconButton: {
     alignItems: 'center',
-    backgroundColor: '#FBFAF8',
-    borderColor: '#E1DBD2',
-    borderRadius: 8,
+    backgroundColor: '#F9FAFB',
+    borderColor: '#E5E7EB',
+    borderRadius: 999,
     borderWidth: 1,
-    height: 36,
+    height: 40,
     justifyContent: 'center',
-    width: 36,
+    width: 40,
   },
   iconButtonDanger: {
-    backgroundColor: '#FFF1F1',
-    borderColor: '#F9B4B4',
+    backgroundColor: '#FFF1F2',
+    borderColor: '#FECACA',
   },
   iconButtonDisabled: {
     opacity: 0.35,
   },
   shareButton: {
     alignItems: 'center',
-    backgroundColor: '#FBFAF8',
-    borderColor: '#E1DBD2',
-    borderRadius: 8,
+    backgroundColor: '#F9FAFB',
+    borderColor: '#E5E7EB',
+    borderRadius: 999,
     borderWidth: 1,
     justifyContent: 'center',
     minHeight: 46,
