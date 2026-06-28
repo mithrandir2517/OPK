@@ -10,9 +10,11 @@ type PartyScreenProps = {
   partyRefs: PartyRef[];
   showEmptyState: boolean;
   expandedPartyCode: string | null;
+  pendingPartyCode: string | null;
   viewerUid: string | null;
   canSync: boolean;
   onChangeParty: (party: PartyState) => void;
+  onSaveParty: (party: PartyState) => void;
   onCreateParty: (party: PartyState) => void;
   onJoinParty: (inviteCode: string) => void;
   onSelectParty: (inviteCode: string) => void;
@@ -29,9 +31,11 @@ export function PartyScreen({
   partyRefs,
   showEmptyState,
   expandedPartyCode,
+  pendingPartyCode,
   viewerUid,
   canSync,
   onChangeParty,
+  onSaveParty,
   onCreateParty,
   onJoinParty,
   onSelectParty,
@@ -59,7 +63,8 @@ export function PartyScreen({
   const activePartyRef = partyRefs.find((item) => item.inviteCode === activePartyCode);
   const ownerUid = activePartyLoaded ? party.creatorUid : activePartyRef?.creatorUid ?? null;
   const isKnownOwner = !!viewerUid && !!ownerUid && ownerUid === viewerUid;
-  const canKnownLeave = !!viewerUid && !!ownerUid && ownerUid !== viewerUid;
+  const canLeaveCurrentParty =
+    !!viewerUid && !!party.inviteCode.trim() && party.members.some((member) => member.uid === viewerUid);
 
   useEffect(() => {
     if (!editOpen) {
@@ -203,7 +208,7 @@ export function PartyScreen({
   };
 
   const saveEditing = () => {
-    onChangeParty(draftParty);
+    onSaveParty(draftParty);
     setEditOpen(false);
     setNewMember('');
   };
@@ -314,6 +319,7 @@ export function PartyScreen({
                   placeholder="Parta Vyškov"
                   placeholderTextColor="#9CA3AF"
                   style={styles.textInput}
+                  autoFocus={false}
                 />
               </View>
               <View style={styles.formField}>
@@ -343,9 +349,14 @@ export function PartyScreen({
           <View style={styles.partyList}>
             {visiblePartyRows.map((item) => {
             const isActive = item.inviteCode === activePartyCode;
+            const isPending = item.inviteCode === pendingPartyCode;
 
             return isActive ? (
-              <View key={item.inviteCode} style={[styles.partyRow, styles.partyRowActive, styles.partyRowExpanded]}>
+              <Pressable
+                key={item.inviteCode}
+                style={[styles.partyRow, styles.partyRowActive, styles.partyRowExpanded]}
+                onPress={startEditing}
+              >
                 <View style={styles.activeRowTop}>
                   <View style={styles.partyRowCopy}>
                     <Text style={styles.activeCardLabel}>{activePartyLoaded ? 'Aktivní party' : 'Načítám party'}</Text>
@@ -385,8 +396,8 @@ export function PartyScreen({
                     </View>
                     <View style={styles.iconSlot}>
                       <Pressable
-                        disabled={!canKnownLeave}
-                        style={[styles.iconButton, !canKnownLeave && styles.iconButtonDisabled]}
+                        disabled={!canLeaveCurrentParty}
+                        style={[styles.iconButton, !canLeaveCurrentParty && styles.iconButtonDisabled]}
                         onPress={() =>
                           Alert.alert('Opustit party', 'Opravdu chceš opustit tuto party?', [
                             { text: 'Zrušit', style: 'cancel' },
@@ -472,9 +483,13 @@ export function PartyScreen({
                     ) : null}
                   </>
                 )}
-              </View>
+              </Pressable>
             ) : (
-              <Pressable key={item.inviteCode} style={styles.partyRow} onPress={() => onSelectParty(item.inviteCode)}>
+              <Pressable
+                key={item.inviteCode}
+                style={[styles.partyRow, isPending && styles.partyRowPending]}
+                onPress={() => onSelectParty(item.inviteCode)}
+              >
                 <View style={styles.partyRowCopy}>
                   <Text style={styles.partyRowTitle}>{item.name || 'Bez názvu'}</Text>
                   <Text style={styles.partyRowMeta}>
@@ -482,7 +497,7 @@ export function PartyScreen({
                   </Text>
                   <Text style={styles.partyRowCode}>{item.inviteCode}</Text>
                 </View>
-                <Text style={styles.partyRowAction}>Otevřít</Text>
+                <Text style={styles.partyRowAction}>{isPending ? 'Načítám…' : 'Otevřít'}</Text>
               </Pressable>
             );
             })}
@@ -753,6 +768,10 @@ const styles = StyleSheet.create({
   partyRowActive: {
     backgroundColor: '#F9FAFB',
     borderColor: '#D4D4D8',
+  },
+  partyRowPending: {
+    borderStyle: 'dashed',
+    opacity: 0.75,
   },
   partyRowCopy: {
     flex: 1,

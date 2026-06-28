@@ -285,6 +285,9 @@ export default function App() {
   const [partyRefs, setPartyRefs] = useState<PartyRef[]>([]);
   const [partyRefsReady, setPartyRefsReady] = useState(false);
   const [expandedPartyCode, setExpandedPartyCode] = useState<string | null>(null);
+  const [pendingPartyCode, setPendingPartyCode] = useState<string | null>(null);
+  const [partyCreateInFlight, setPartyCreateInFlight] = useState(false);
+  const [partyUpdateInFlight, setPartyUpdateInFlight] = useState(false);
   const [firebaseUser, setFirebaseUser] = useState<null | { uid: string; displayName: string; email: string | null; photoURL: string | null }>(null);
   const googleClientIdReady = !!googleWebClientId;
   const pivoReplySnapshot = useRef({ place: defaultPivoState.place, time: defaultPivoState.time, note: defaultPivoState.note, reply: defaultPivoState.reply, arrival: defaultPivoState.arrival });
@@ -292,6 +295,7 @@ export default function App() {
   const pushOwnerUid = useRef<string | null>(null);
   const pushTokenRef = useRef<string | null>(null);
   const pendingNotificationRoute = useRef<NotificationRoute | null>(null);
+  const selectPartyRequestId = useRef(0);
   const isPlaceholderParty =
     party.inviteCode === defaultParty.inviteCode &&
     party.name === defaultParty.name &&
@@ -565,7 +569,7 @@ export default function App() {
   }, [firebaseUser, joinTargetCode, storageReady]);
 
   useEffect(() => {
-    if (!storageReady || !firebaseEnabled || !firebaseUser || !party.inviteCode.trim() || noRealParty) {
+    if (!storageReady || !firebaseEnabled || !firebaseUser || !party.inviteCode.trim() || noRealParty || partyCreateInFlight || partyUpdateInFlight) {
       return;
     }
 
@@ -586,7 +590,7 @@ export default function App() {
     return () => {
       mounted = false;
     };
-  }, [firebaseUser, firebaseEnabled, noRealParty, party.inviteCode, storageReady]);
+  }, [firebaseEnabled, firebaseUser, noRealParty, party.inviteCode, partyCreateInFlight, partyUpdateInFlight, storageReady]);
 
   useEffect(() => {
     if (!firebaseUser) {
@@ -694,6 +698,8 @@ export default function App() {
           };
 
     setJoinTargetCode(null);
+    setPendingPartyCode(null);
+    setPartyCreateInFlight(true);
     setPartySyncError(null);
     const nextParty = {
       ...draftParty,
@@ -702,14 +708,63 @@ export default function App() {
       creatorUid: firebaseUser?.uid ?? null,
     };
 
+    if (firebaseEnabled && firebaseUser) {
+      void (async () => {
+        try {
+          await savePartySync(nextParty);
+          await savePartyRefSync(firebaseUser.uid, nextParty);
+          setParty(nextParty);
+          setExpandedPartyCode(nextParty.inviteCode);
+          setPartySyncMode('ready');
+        } catch (error: unknown) {
+          setPartySyncError(error instanceof Error ? error.message : 'Nepovedlo se založit party ve Firebase.');
+        } finally {
+          setPartyCreateInFlight(false);
+        }
+      })();
+      return;
+    }
+
     setParty(nextParty);
+    setExpandedPartyCode(nextParty.inviteCode);
     setPartySyncMode('ready');
+    setPartyCreateInFlight(false);
+  };
+
+  const handleSaveParty = (draftParty: PartyState) => {
+    if (!draftParty.inviteCode.trim()) {
+      return;
+    }
+
+    const nextParty = {
+      ...draftParty,
+      members: draftParty.members,
+    };
+
+    setPartyUpdateInFlight(true);
+    setPartySyncError(null);
 
     if (firebaseEnabled && firebaseUser) {
-      void savePartySync(nextParty).catch((error: unknown) => {
-        setPartySyncError(error instanceof Error ? error.message : 'Nepovedlo se založit party ve Firebase.');
-      });
+      void (async () => {
+        try {
+          await savePartySync(nextParty);
+          await savePartyRefSync(firebaseUser.uid, nextParty);
+          setParty(nextParty);
+          setExpandedPartyCode(nextParty.inviteCode);
+          setPartySyncMode('ready');
+        } catch (error: unknown) {
+          setPartySyncError(error instanceof Error ? error.message : 'Nepovedlo se uložit party.');
+        } finally {
+          setPartyUpdateInFlight(false);
+        }
+      })();
+      return;
     }
+
+    setParty(nextParty);
+    setExpandedPartyCode(nextParty.inviteCode);
+    setPartySyncMode('ready');
+    setPartyUpdateInFlight(false);
   };
 
   const handleJoinParty = (inviteCode: string) => {
@@ -728,17 +783,36 @@ export default function App() {
       return;
     }
 
+    const requestId = ++selectPartyRequestId.current;
+    const previousParty = party;
+
     setPartySyncError(null);
     setJoinTargetCode(null);
+    setPendingPartyCode(inviteCode);
     setPartySyncMode('ready');
-    animatePartySwap();
-    setExpandedPartyCode(inviteCode);
+
+    const timeoutId = setTimeout(() => {
+      if (selectPartyRequestId.current !== requestId) {
+        return;
+      }
+
+      setPartySyncError(`Načítání party ${inviteCode} vypršelo.`);
+      setPendingPartyCode(null);
+      setExpandedPartyCode(previousParty.inviteCode || null);
+    }, 6000);
 
     void fetchPartySync(inviteCode)
       .then((selectedParty) => {
+        if (selectPartyRequestId.current !== requestId) {
+          return;
+        }
+
+        clearTimeout(timeoutId);
+        setPendingPartyCode(null);
+
         if (!selectedParty) {
           setPartySyncError(`Party ${inviteCode} se ve Firebase nenašla.`);
-          setExpandedPartyCode(party.inviteCode);
+          setExpandedPartyCode(previousParty.inviteCode || null);
           return;
         }
 
@@ -747,8 +821,14 @@ export default function App() {
         setExpandedPartyCode(selectedParty.inviteCode);
       })
       .catch((error: unknown) => {
+        if (selectPartyRequestId.current !== requestId) {
+          return;
+        }
+
+        clearTimeout(timeoutId);
+        setPendingPartyCode(null);
         setPartySyncError(error instanceof Error ? error.message : 'Nepovedlo se načíst party z Firebase.');
-        setExpandedPartyCode(party.inviteCode);
+        setExpandedPartyCode(previousParty.inviteCode || null);
       });
   };
 
@@ -900,9 +980,11 @@ export default function App() {
               partyRefs={partyRefs}
               showEmptyState={showEmptyPartyState}
               expandedPartyCode={expandedPartyCode}
+              pendingPartyCode={pendingPartyCode}
               viewerUid={firebaseUser?.uid ?? null}
               canSync={firebaseEnabled && !!firebaseUser}
               onChangeParty={setParty}
+              onSaveParty={handleSaveParty}
               onCreateParty={handleCreateParty}
               onJoinParty={handleJoinParty}
               onSelectParty={handleSelectParty}
