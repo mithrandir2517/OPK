@@ -44,6 +44,7 @@ export function PartyScreen({
   const [newMember, setNewMember] = useState('');
   const [inviteCode, setInviteCode] = useState('');
   const [editOpen, setEditOpen] = useState(false);
+  const [actionOpen, setActionOpen] = useState<'create' | 'join' | null>(null);
   const [draftParty, setDraftParty] = useState(party);
   const [displayPartyCodes, setDisplayPartyCodes] = useState<string[]>([]);
   const activePartyCode = expandedPartyCode ?? party.inviteCode;
@@ -165,6 +166,11 @@ export function PartyScreen({
     setDraftParty(party);
     setNewMember('');
     setEditOpen(false);
+  };
+
+  const closeAction = () => {
+    setActionOpen(null);
+    setInviteCode('');
   };
 
   const saveEditing = () => {
@@ -350,20 +356,53 @@ export function PartyScreen({
             })}
           </View>
         )}
+
+        <View style={styles.actionStrip}>
+          <Pressable
+            style={[styles.actionPill, actionOpen === 'create' && styles.actionPillActive]}
+            onPress={() => setActionOpen((current) => (current === 'create' ? null : 'create'))}
+          >
+            <MaterialCommunityIcons name="plus" size={20} color={actionOpen === 'create' ? '#111827' : '#6B7280'} />
+            <Text style={[styles.actionPillText, actionOpen === 'create' && styles.actionPillTextActive]}>Nová</Text>
+          </Pressable>
+          <Pressable
+            style={[styles.actionPill, actionOpen === 'join' && styles.actionPillActive]}
+            onPress={() => setActionOpen((current) => (current === 'join' ? null : 'join'))}
+          >
+            <MaterialCommunityIcons name="link-variant" size={20} color={actionOpen === 'join' ? '#111827' : '#6B7280'} />
+            <Text style={[styles.actionPillText, actionOpen === 'join' && styles.actionPillTextActive]}>Připojit</Text>
+          </Pressable>
+        </View>
       </View>
 
-        <View style={styles.actionGrid}>
-        <View style={styles.actionCard}>
-          <Text style={styles.formTitle}>Nová party</Text>
-          <Text style={styles.cardText}>Vytvoří novou partu.</Text>
+      {actionOpen === 'create' ? (
+        <View style={styles.expandedActionCard}>
+          <View style={styles.expandedActionHeader}>
+            <View>
+              <Text style={styles.formTitle}>Nová party</Text>
+              <Text style={styles.cardText}>Vytvoří novou sdílenou partu z aktuálních hodnot.</Text>
+            </View>
+            <Pressable style={styles.actionCloseButton} onPress={closeAction}>
+              <MaterialCommunityIcons name="close" size={18} color="#6B7280" />
+            </Pressable>
+          </View>
           <Pressable style={[styles.shareButton, styles.shareButtonPrimary]} onPress={onCreateParty}>
             <Text style={styles.shareButtonPrimaryText}>Vytvořit</Text>
           </Pressable>
         </View>
+      ) : null}
 
-        <View style={styles.actionCard}>
-          <Text style={styles.formTitle}>Připojit se</Text>
-          <Text style={styles.cardText}>Zadej kód party.</Text>
+      {actionOpen === 'join' ? (
+        <View style={styles.expandedActionCard}>
+          <View style={styles.expandedActionHeader}>
+            <View>
+              <Text style={styles.formTitle}>Připojit se</Text>
+              <Text style={styles.cardText}>Zadej kód party.</Text>
+            </View>
+            <Pressable style={styles.actionCloseButton} onPress={closeAction}>
+              <MaterialCommunityIcons name="close" size={18} color="#6B7280" />
+            </Pressable>
+          </View>
           <View style={styles.formField}>
             <Text style={styles.inputLabel}>Kód party</Text>
             <TextInput
@@ -386,7 +425,7 @@ export function PartyScreen({
               : 'Kód se zobrazí po vytvoření.'}
           </Text>
         </View>
-      </View>
+      ) : null}
     </>
   );
 }
@@ -680,8 +719,59 @@ const styles = StyleSheet.create({
     flexShrink: 0,
     marginLeft: 12,
   },
-  actionGrid: {
+  actionStrip: {
+    flexDirection: 'row',
     gap: 10,
+    marginTop: 4,
+  },
+  actionPill: {
+    alignItems: 'center',
+    backgroundColor: '#FFFFFF',
+    borderColor: '#E7E5E4',
+    borderRadius: 999,
+    borderWidth: 1,
+    flex: 1,
+    flexDirection: 'row',
+    gap: 8,
+    justifyContent: 'center',
+    minHeight: 46,
+    paddingHorizontal: 12,
+  },
+  actionPillActive: {
+    backgroundColor: '#F9FAFB',
+    borderColor: '#D4D4D8',
+  },
+  actionPillText: {
+    color: '#6B7280',
+    fontSize: 13,
+    fontWeight: '900',
+  },
+  actionPillTextActive: {
+    color: '#111827',
+  },
+  actionCloseButton: {
+    alignItems: 'center',
+    backgroundColor: '#F9FAFB',
+    borderColor: '#E5E7EB',
+    borderRadius: 999,
+    borderWidth: 1,
+    height: 36,
+    justifyContent: 'center',
+    width: 36,
+  },
+  expandedActionCard: {
+    backgroundColor: '#F9FAFB',
+    borderColor: '#E7E5E4',
+    borderRadius: 14,
+    borderWidth: 1,
+    gap: 10,
+    padding: 16,
+  },
+  expandedActionHeader: {
+    alignItems: 'flex-start',
+    flexDirection: 'row',
+    gap: 12,
+    justifyContent: 'space-between',
   },
   emptyStateCard: {
     backgroundColor: '#F9FAFB',
@@ -693,14 +783,6 @@ const styles = StyleSheet.create({
   },
   emptyStatePills: {
     gap: 8,
-  },
-  actionCard: {
-    backgroundColor: '#FFFFFF',
-    borderColor: '#E7E5E4',
-    borderRadius: 14,
-    borderWidth: 1,
-    gap: 12,
-    padding: 16,
   },
   editPanel: {
     gap: 12,
