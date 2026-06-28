@@ -3,6 +3,10 @@ import { firestore, firebaseEnabled } from './firebase';
 import { ActivityKey, ActivityVote } from '../types';
 
 function voteCollection(partyCode: string, activity: ActivityKey) {
+  if (!partyCode.trim()) {
+    return null;
+  }
+
   return collection(firestore as NonNullable<typeof firestore>, 'parties', partyCode, 'polls', activity, 'votes');
 }
 
@@ -34,7 +38,13 @@ export function subscribeActivityVotesSync(
     return () => {};
   }
 
-  return onSnapshot(voteCollection(partyCode, activity), (snapshot) => {
+  const collectionRef = voteCollection(partyCode, activity);
+
+  if (!collectionRef) {
+    return () => {};
+  }
+
+  return onSnapshot(collectionRef, (snapshot) => {
     const votes = snapshot.docs
       .map((document) => mapVoteData(document.id, document.data() as Record<string, unknown>))
       .filter((item): item is ActivityVote => item !== null)
@@ -53,6 +63,10 @@ export async function saveActivityVoteSync(
     return;
   }
 
+  if (!partyCode.trim()) {
+    return;
+  }
+
   const payload: Record<string, unknown> = {
     uid: vote.uid,
     displayName: vote.displayName,
@@ -64,5 +78,11 @@ export async function saveActivityVoteSync(
     payload.arrival = vote.arrival.trim();
   }
 
-  await setDoc(doc(voteCollection(partyCode, activity), vote.uid), payload, { merge: true });
+  const collectionRef = voteCollection(partyCode, activity);
+
+  if (!collectionRef) {
+    return;
+  }
+
+  await setDoc(doc(collectionRef, vote.uid), payload, { merge: true });
 }

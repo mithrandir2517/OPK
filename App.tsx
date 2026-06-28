@@ -44,7 +44,7 @@ import {
   subscribePivoSync,
 } from './src/backend/opkSync';
 import { saveActivityVoteSync, subscribeActivityVotesSync } from './src/backend/pollSync';
-import { loadJson, saveJson, storageKeys } from './src/storage/localStorage';
+import { loadJson, removeJson, saveJson, storageKeys } from './src/storage/localStorage';
 import { ActivityKey, ActivityVote, PartyMember, PartyRef, PartyState, PivoState, SectionKey, UserProfile } from './src/types';
 import { registerForPushNotificationsAsync } from './src/backend/pushNotifications';
 import {
@@ -61,14 +61,10 @@ const defaultProfile: UserProfile = {
   notificationsEnabled: true,
 };
 const defaultParty: PartyState = {
-  name: 'Parta Vyškov',
-  city: 'Vyškov',
-  members: [
-    { uid: 'legacy-marek', displayName: 'Marek', source: 'legacy' },
-    { uid: 'legacy-tomas', displayName: 'Tomáš', source: 'legacy' },
-    { uid: 'legacy-pavel', displayName: 'Pavel', source: 'legacy' },
-  ],
-  inviteCode: 'OPK-VYSKOV',
+  name: '',
+  city: '',
+  members: [],
+  inviteCode: '',
   creatorUid: null,
 };
 
@@ -101,10 +97,11 @@ function normalizeProfile(value: Partial<UserProfile> | null): UserProfile {
 
 function normalizePartyMembers(value: unknown): PartyMember[] {
   if (!Array.isArray(value)) {
-    return defaultParty.members;
+    return [];
   }
 
   const mapped: PartyMember[] = [];
+  const seen = new Set<string>();
 
   value.forEach((member, index) => {
     if (typeof member === 'string') {
@@ -150,20 +147,38 @@ function normalizePartyMembers(value: unknown): PartyMember[] {
     }
   });
 
-  return mapped.length > 0 ? mapped : defaultParty.members;
+  return mapped.filter((member) => {
+    if (seen.has(member.uid)) {
+      return false;
+    }
+
+    seen.add(member.uid);
+    return true;
+  });
 }
 
 function normalizeParty(value: Partial<PartyState> | null): PartyState {
+  const inviteCode = typeof value?.inviteCode === 'string' ? value.inviteCode.trim() : '';
+
+  if (!inviteCode) {
+    return defaultParty;
+  }
+
   return {
-    name: typeof value?.name === 'string' ? value.name : defaultParty.name,
-    city: typeof value?.city === 'string' ? value.city : defaultParty.city,
+    name: typeof value?.name === 'string' ? value.name : '',
+    city: typeof value?.city === 'string' ? value.city : '',
     members: normalizePartyMembers(value?.members),
     creatorUid: typeof value?.creatorUid === 'string' && value.creatorUid.trim() ? value.creatorUid : null,
-    inviteCode:
-      typeof value?.inviteCode === 'string' && value.inviteCode.trim()
-        ? value.inviteCode
-        : defaultParty.inviteCode,
+    inviteCode,
   };
+}
+
+function isLegacyPlaceholderParty(value: Partial<PartyState> | null) {
+  return (
+    value?.inviteCode === 'OPK-VYSKOV' ||
+    (typeof value?.name === 'string' && value.name.trim() === 'Parta Vyškov') ||
+    (typeof value?.city === 'string' && value.city.trim() === 'Vyškov')
+  );
 }
 
 function normalizePartyCode(value: string) {
@@ -268,6 +283,7 @@ export default function App() {
   const [profile, setProfile] = useState<UserProfile>(defaultProfile);
   const [party, setParty] = useState<PartyState>(defaultParty);
   const [partyRefs, setPartyRefs] = useState<PartyRef[]>([]);
+  const [partyRefsReady, setPartyRefsReady] = useState(false);
   const [expandedPartyCode, setExpandedPartyCode] = useState<string | null>(null);
   const [firebaseUser, setFirebaseUser] = useState<null | { uid: string; displayName: string; email: string | null; photoURL: string | null }>(null);
   const googleClientIdReady = !!googleWebClientId;
@@ -276,6 +292,14 @@ export default function App() {
   const pushOwnerUid = useRef<string | null>(null);
   const pushTokenRef = useRef<string | null>(null);
   const pendingNotificationRoute = useRef<NotificationRoute | null>(null);
+  const isPlaceholderParty =
+    party.inviteCode === defaultParty.inviteCode &&
+    party.name === defaultParty.name &&
+    party.city === defaultParty.city &&
+    arePartyMembersEqual(party.members, defaultParty.members);
+  const showEmptyPartyState = partyRefsReady && partyRefs.length === 0 && isPlaceholderParty;
+  const noRealParty = showEmptyPartyState && !joinTargetCode && !expandedPartyCode;
+  const canPersistParty = !firebaseUser || partyRefsReady;
 
   useEffect(() => {
     let mounted = true;
@@ -291,7 +315,12 @@ export default function App() {
 
       if (mounted) {
         setProfile(normalizeProfile(savedProfile));
-        setParty(normalizeParty(savedParty));
+        if (isLegacyPlaceholderParty(savedParty) || !savedParty?.inviteCode?.trim()) {
+          setParty(defaultParty);
+          void removeJson(storageKeys.party);
+        } else {
+          setParty(normalizeParty(savedParty));
+        }
         setStorageReady(true);
       }
     });
@@ -325,30 +354,32 @@ export default function App() {
     if (storageReady) {
       saveJson(storageKeys.selectedSection, selectedSection);
       saveJson(storageKeys.profile, profile);
-      if (partySyncMode !== 'joining' && !joinTargetCode) {
+      if (noRealParty) {
+        void removeJson(storageKeys.party);
+      } else if (canPersistParty && partySyncMode !== 'joining' && !joinTargetCode) {
         saveJson(storageKeys.party, party);
       }
     }
-  }, [joinTargetCode, party, partySyncMode, profile, selectedSection, storageReady]);
+  }, [canPersistParty, joinTargetCode, noRealParty, party, partySyncMode, profile, selectedSection, storageReady]);
 
   useEffect(() => {
-    if (storageReady && firebaseEnabled && firebaseUser && partySyncMode === 'ready') {
+    if (storageReady && firebaseEnabled && firebaseUser && canPersistParty && partySyncMode === 'ready' && !noRealParty) {
       void savePartySync(party).catch((error: unknown) => {
         setPartySyncError(error instanceof Error ? error.message : 'Nepovedlo se uložit party do Firebase.');
       });
     }
-  }, [firebaseUser, party, partySyncMode, storageReady]);
+  }, [canPersistParty, firebaseUser, noRealParty, party, partySyncMode, storageReady]);
 
   useEffect(() => {
-    if (storageReady && firebaseEnabled && firebaseUser && partySyncMode === 'ready') {
+    if (storageReady && firebaseEnabled && firebaseUser && canPersistParty && partySyncMode === 'ready' && !noRealParty) {
       void savePartyRefSync(firebaseUser.uid, party).catch((error: unknown) => {
         setPartySyncError(error instanceof Error ? error.message : 'Nepovedlo se uložit přehled party.');
       });
     }
-  }, [firebaseUser, party, partySyncMode, storageReady]);
+  }, [canPersistParty, firebaseUser, noRealParty, party, partySyncMode, storageReady]);
 
   useEffect(() => {
-    if (!storageReady || !firebaseUser) {
+    if (!storageReady || !firebaseUser || !canPersistParty || noRealParty) {
       return;
     }
 
@@ -366,7 +397,7 @@ export default function App() {
           })
         : current,
     );
-  }, [firebaseUser, profile.name, storageReady]);
+  }, [canPersistParty, firebaseUser, noRealParty, profile.name, storageReady]);
 
   useEffect(() => {
     if (!storageReady || !firebaseEnabled) {
@@ -408,7 +439,7 @@ export default function App() {
   }, [firebaseUser, firebaseEnabled, profile.notificationsEnabled, storageReady]);
 
   useEffect(() => {
-    if (!storageReady || !firebaseUser) {
+    if (!storageReady || !firebaseUser || !party.inviteCode.trim()) {
       return;
     }
 
@@ -426,14 +457,14 @@ export default function App() {
             members: [...current.members, member],
           },
     );
-  }, [firebaseUser, profile.name, storageReady]);
+  }, [firebaseUser, party.inviteCode, profile.name, storageReady]);
 
   useEffect(() => {
     if (!storageReady) {
       return;
     }
 
-    if (!firebaseEnabled || !firebaseUser || joinTargetCode) {
+    if (!firebaseEnabled || !firebaseUser || joinTargetCode || noRealParty || !canPersistParty) {
       return;
     }
 
@@ -465,7 +496,7 @@ export default function App() {
     );
 
     return unsubscribe;
-  }, [firebaseUser, joinTargetCode, party.inviteCode, storageReady]);
+  }, [canPersistParty, firebaseUser, joinTargetCode, noRealParty, party.inviteCode, storageReady]);
 
   useEffect(() => {
     if (!storageReady || !firebaseEnabled || !firebaseUser || !joinTargetCode) {
@@ -534,12 +565,42 @@ export default function App() {
   }, [firebaseUser, joinTargetCode, storageReady]);
 
   useEffect(() => {
-    if (!firebaseUser) {
-      setPartyRefs([]);
+    if (!storageReady || !firebaseEnabled || !firebaseUser || !party.inviteCode.trim() || noRealParty) {
       return;
     }
 
-    return subscribeUserPartyRefs(firebaseUser.uid, setPartyRefs);
+    let mounted = true;
+
+    void fetchPartySync(party.inviteCode).then((remoteParty) => {
+      if (!mounted) {
+        return;
+      }
+
+      if (!remoteParty) {
+        setParty(defaultParty);
+        setExpandedPartyCode(null);
+        void removeJson(storageKeys.party);
+      }
+    });
+
+    return () => {
+      mounted = false;
+    };
+  }, [firebaseUser, firebaseEnabled, noRealParty, party.inviteCode, storageReady]);
+
+  useEffect(() => {
+    if (!firebaseUser) {
+      setPartyRefs([]);
+      setPartyRefsReady(true);
+      return;
+    }
+
+    setPartyRefsReady(false);
+
+    return subscribeUserPartyRefs(firebaseUser.uid, (refs) => {
+      setPartyRefs(refs);
+      setPartyRefsReady(true);
+    });
   }, [firebaseUser]);
 
   const openNotificationRoute = useCallback(
@@ -618,7 +679,8 @@ export default function App() {
   );
 
   const activeActivity = activityMeta[selectedActivity];
-  const activePartyCode = joinTargetCode ?? expandedPartyCode ?? party.inviteCode;
+  const activePartyCode = joinTargetCode || expandedPartyCode || party.inviteCode || partyRefs[0]?.inviteCode || '';
+  const hasActivePartyCode = !!activePartyCode;
   const showAuthGate = storageReady && firebaseEnabled && !firebaseUser && !authGateDismissed;
 
   const handleCreateParty = () => {
@@ -766,7 +828,9 @@ export default function App() {
               <OpkLogo />
               <Pressable style={styles.partyPill} onPress={() => setSelectedSection('party')}>
               <Text style={styles.partyLabel}>Parta</Text>
-              <Text style={styles.partyName}>{partySyncMode === 'joining' ? 'Načítám…' : party.name}</Text>
+              <Text style={styles.partyName}>
+                {showEmptyPartyState ? 'Žádná party' : partySyncMode === 'joining' ? 'Načítám…' : party.name}
+              </Text>
               <MaterialCommunityIcons name="chevron-down" size={18} color="#6B7280" />
             </Pressable>
           </View>
@@ -780,7 +844,7 @@ export default function App() {
           <PivoScreen
             accent={activeActivity.accent}
             partyCode={activePartyCode}
-            canSync={firebaseEnabled && !!firebaseUser}
+            canSync={firebaseEnabled && !!firebaseUser && !noRealParty && hasActivePartyCode}
             viewerId={firebaseUser?.uid ?? null}
             viewerName={firebaseUser?.displayName ?? profile.name}
             partyMembers={party.members}
@@ -790,7 +854,7 @@ export default function App() {
             <ObedScreen
               accent={activeActivity.accent}
               partyCode={activePartyCode}
-              canSync={firebaseEnabled && !!firebaseUser}
+              canSync={firebaseEnabled && !!firebaseUser && !noRealParty && hasActivePartyCode}
               viewerId={firebaseUser?.uid ?? null}
               viewerName={firebaseUser?.displayName ?? profile.name}
             />
@@ -799,7 +863,7 @@ export default function App() {
             <KoloScreen
               accent={activeActivity.accent}
               partyCode={activePartyCode}
-              canSync={firebaseEnabled && !!firebaseUser}
+              canSync={firebaseEnabled && !!firebaseUser && !noRealParty && hasActivePartyCode}
               viewerId={firebaseUser?.uid ?? null}
               viewerName={firebaseUser?.displayName ?? profile.name}
             />
@@ -808,7 +872,7 @@ export default function App() {
             <KronikaScreen
               onBack={() => setSelectedSection(selectedActivity)}
               partyCode={activePartyCode}
-              canSync={firebaseEnabled && !!firebaseUser}
+              canSync={firebaseEnabled && !!firebaseUser && !noRealParty && hasActivePartyCode}
             />
           )}
           {selectedSection === 'zpravy' && <ZpravyScreen onBack={() => setSelectedSection(selectedActivity)} />}
@@ -834,6 +898,7 @@ export default function App() {
               onBack={() => setSelectedSection(selectedActivity)}
               party={party}
               partyRefs={partyRefs}
+              showEmptyState={showEmptyPartyState}
               expandedPartyCode={expandedPartyCode}
               viewerUid={firebaseUser?.uid ?? null}
               canSync={firebaseEnabled && !!firebaseUser}
@@ -1863,7 +1928,7 @@ function PivoScreen({
 const styles = StyleSheet.create({
   safeArea: {
     flex: 1,
-    backgroundColor: '#F4F1EA',
+    backgroundColor: '#FAFAF9',
     paddingTop: Platform.OS === 'android' ? NativeStatusBar.currentHeight ?? 0 : 0,
   },
   appShell: {
@@ -1877,20 +1942,16 @@ const styles = StyleSheet.create({
   },
   header: {
     alignItems: 'center',
-    backgroundColor: '#F4F1EA',
-    borderBottomColor: '#E6DED3',
+    backgroundColor: '#FAFAF9',
+    borderBottomColor: '#E7E5E4',
     borderBottomWidth: 1,
-    elevation: 3,
+    elevation: 0,
     flexDirection: 'row',
     gap: 16,
     justifyContent: 'space-between',
     paddingBottom: 10,
     paddingHorizontal: 18,
     paddingTop: 10,
-    shadowColor: '#111827',
-    shadowOffset: { width: 0, height: 3 },
-    shadowOpacity: 0.07,
-    shadowRadius: 8,
     zIndex: 5,
   },
   headerLeft: {
@@ -1902,19 +1963,15 @@ const styles = StyleSheet.create({
   logoMark: {
     alignItems: 'center',
     backgroundColor: '#15251F',
-    borderColor: '#2D443A',
-    borderRadius: 8,
+    borderColor: '#15251F',
+    borderRadius: 12,
     borderWidth: 1,
-    elevation: 2,
+    elevation: 0,
     gap: 3,
     height: 44,
     justifyContent: 'center',
     overflow: 'hidden',
     paddingHorizontal: 7,
-    shadowColor: '#111827',
-    shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.06,
-    shadowRadius: 6,
     width: 70,
   },
   logoIconRow: {
@@ -1948,19 +2005,15 @@ const styles = StyleSheet.create({
   partyPill: {
     alignItems: 'center',
     backgroundColor: '#FFFFFF',
-    borderColor: '#DED8CF',
-    borderRadius: 8,
+    borderColor: '#E7E5E4',
+    borderRadius: 999,
     borderWidth: 1,
-    elevation: 2,
+    elevation: 0,
     flexDirection: 'row',
     flexShrink: 1,
     gap: 7,
-    minHeight: 38,
-    paddingHorizontal: 11,
-    shadowColor: '#111827',
-    shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.06,
-    shadowRadius: 6,
+    minHeight: 42,
+    paddingHorizontal: 12,
   },
   partyLabel: {
     color: '#6B7280',
@@ -1977,40 +2030,28 @@ const styles = StyleSheet.create({
   menuButton: {
     alignItems: 'center',
     backgroundColor: '#FFFFFF',
-    borderColor: '#DED8CF',
-    borderRadius: 8,
+    borderColor: '#E7E5E4',
+    borderRadius: 999,
     borderWidth: 1,
-    elevation: 2,
-    height: 38,
+    elevation: 0,
+    height: 42,
     justifyContent: 'center',
-    shadowColor: '#111827',
-    shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.06,
-    shadowRadius: 6,
-    width: 38,
+    width: 42,
   },
   statusPanel: {
     backgroundColor: '#15251F',
-    borderRadius: 8,
-    elevation: 5,
+    borderRadius: 14,
+    elevation: 0,
     gap: 18,
     padding: 18,
-    shadowColor: '#111827',
-    shadowOffset: { width: 0, height: 6 },
-    shadowOpacity: 0.14,
-    shadowRadius: 14,
   },
   statusPanelLight: {
     backgroundColor: '#FFFFFF',
-    borderColor: '#E1DBD2',
-    borderRadius: 8,
+    borderColor: '#E7E5E4',
+    borderRadius: 14,
     borderWidth: 1,
-    elevation: 2,
+    elevation: 0,
     padding: 18,
-    shadowColor: '#111827',
-    shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.06,
-    shadowRadius: 8,
   },
   label: {
     color: '#6B7280',
@@ -2028,7 +2069,7 @@ const styles = StyleSheet.create({
   },
   statusTitle: {
     color: '#FFFFFF',
-    fontSize: 24,
+    fontSize: 22,
     fontWeight: '900',
     letterSpacing: 0,
     marginTop: 6,
@@ -2041,7 +2082,7 @@ const styles = StyleSheet.create({
   },
   darkStatusTitle: {
     color: '#111827',
-    fontSize: 24,
+    fontSize: 22,
     fontWeight: '900',
     letterSpacing: 0,
     marginTop: 6,
@@ -2063,16 +2104,16 @@ const styles = StyleSheet.create({
     backgroundColor: '#F8B84E',
     borderColor: '#F6D186',
     borderWidth: 1,
-    borderRadius: 8,
+    borderRadius: 999,
     flexDirection: 'row',
     gap: 8,
-    minHeight: 48,
+    minHeight: 44,
     justifyContent: 'center',
     paddingHorizontal: 18,
   },
   primaryButtonText: {
     color: '#1F2937',
-    fontSize: 16,
+    fontSize: 14,
     fontWeight: '900',
   },
   sectionHeader: {
@@ -2094,21 +2135,16 @@ const styles = StyleSheet.create({
   },
   detailPanel: {
     backgroundColor: '#FFFFFF',
-    borderColor: '#E1DBD2',
-    borderRadius: 8,
+    borderColor: '#E7E5E4',
+    borderRadius: 14,
     borderWidth: 1,
-    borderTopWidth: 5,
-    elevation: 2,
+    elevation: 0,
     gap: 14,
-    padding: 16,
-    shadowColor: '#111827',
-    shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.06,
-    shadowRadius: 8,
+    padding: 18,
   },
   detailTitle: {
     color: '#111827',
-    fontSize: 24,
+    fontSize: 20,
     fontWeight: '900',
   },
   detailTitleRow: {
@@ -2119,16 +2155,16 @@ const styles = StyleSheet.create({
   },
   smallButton: {
     alignItems: 'center',
-    borderRadius: 8,
+    borderRadius: 999,
     flexDirection: 'row',
     gap: 5,
-    minHeight: 42,
+    minHeight: 44,
     justifyContent: 'center',
-    paddingHorizontal: 12,
+    paddingHorizontal: 14,
   },
   smallButtonText: {
     color: '#FFFFFF',
-    fontSize: 14,
+    fontSize: 13,
     fontWeight: '900',
   },
   cardList: {
@@ -2140,23 +2176,19 @@ const styles = StyleSheet.create({
     fontWeight: '900',
   },
   menuCard: {
-    backgroundColor: '#FBFAF8',
-    borderColor: '#E5E7EB',
-    borderRadius: 8,
+    backgroundColor: '#FFFFFF',
+    borderColor: '#E7E5E4',
+    borderRadius: 14,
     borderWidth: 1,
-    padding: 14,
+    padding: 16,
   },
   restaurantCard: {
     backgroundColor: '#FFFFFF',
-    borderColor: '#E1DBD2',
-    borderRadius: 8,
+    borderColor: '#E7E5E4',
+    borderRadius: 14,
     borderWidth: 1,
-    elevation: 1,
-    padding: 14,
-    shadowColor: '#111827',
-    shadowOffset: { width: 0, height: 1 },
-    shadowOpacity: 0.04,
-    shadowRadius: 5,
+    elevation: 0,
+    padding: 16,
   },
   restaurantHeader: {
     alignItems: 'center',
@@ -2259,9 +2291,9 @@ const styles = StyleSheet.create({
     fontWeight: '900',
   },
   textInput: {
-    backgroundColor: '#FBFAF8',
-    borderColor: '#E1DBD2',
-    borderRadius: 8,
+    backgroundColor: '#F9FAFB',
+    borderColor: '#E5E7EB',
+    borderRadius: 12,
     borderWidth: 1,
     color: '#111827',
     fontSize: 16,
@@ -2279,8 +2311,8 @@ const styles = StyleSheet.create({
   smallGhostButton: {
     alignItems: 'center',
     backgroundColor: '#F9FAFB',
-    borderColor: '#D1D5DB',
-    borderRadius: 8,
+    borderColor: '#E5E7EB',
+    borderRadius: 999,
     borderWidth: 1,
     flexGrow: 1,
     justifyContent: 'center',
@@ -2294,8 +2326,8 @@ const styles = StyleSheet.create({
   },
   planIcon: {
     alignItems: 'center',
-    backgroundColor: '#FEF3C7',
-    borderRadius: 8,
+    backgroundColor: '#F3F4F6',
+    borderRadius: 999,
     height: 48,
     justifyContent: 'center',
     width: 48,
@@ -2315,12 +2347,12 @@ const styles = StyleSheet.create({
   },
   replyButton: {
     alignItems: 'center',
-    backgroundColor: '#FBFAF8',
-    borderColor: '#E1DBD2',
-    borderRadius: 8,
+    backgroundColor: '#F9FAFB',
+    borderColor: '#E5E7EB',
+    borderRadius: 999,
     borderWidth: 1,
     flex: 1,
-    minHeight: 42,
+    minHeight: 44,
     justifyContent: 'center',
     paddingHorizontal: 8,
   },
@@ -2344,9 +2376,9 @@ const styles = StyleSheet.create({
     marginTop: 8,
   },
   arrivalChip: {
-    backgroundColor: '#FBFAF8',
-    borderColor: '#E1DBD2',
-    borderRadius: 8,
+    backgroundColor: '#F9FAFB',
+    borderColor: '#E5E7EB',
+    borderRadius: 999,
     borderWidth: 1,
     paddingHorizontal: 10,
     paddingVertical: 8,
@@ -2459,12 +2491,12 @@ const styles = StyleSheet.create({
   },
   voteButton: {
     alignItems: 'center',
-    backgroundColor: '#FFFFFF',
-    borderColor: '#D1D5DB',
-    borderRadius: 8,
+    backgroundColor: '#F9FAFB',
+    borderColor: '#E5E7EB',
+    borderRadius: 999,
     borderWidth: 1,
     justifyContent: 'center',
-    minHeight: 40,
+    minHeight: 44,
     paddingHorizontal: 12,
   },
   voteButtonActive: {
@@ -2482,11 +2514,11 @@ const styles = StyleSheet.create({
   pickRestaurantButton: {
     alignItems: 'center',
     backgroundColor: '#F3F4F6',
-    borderColor: '#D1D5DB',
-    borderRadius: 8,
+    borderColor: '#E5E7EB',
+    borderRadius: 999,
     borderWidth: 1,
     justifyContent: 'center',
-    minHeight: 42,
+    minHeight: 44,
     paddingHorizontal: 12,
     marginTop: 12,
   },
@@ -2546,8 +2578,8 @@ const styles = StyleSheet.create({
   authBanner: {
     alignItems: 'center',
     backgroundColor: '#FFFFFF',
-    borderColor: '#E1DBD2',
-    borderRadius: 8,
+    borderColor: '#E7E5E4',
+    borderRadius: 14,
     borderWidth: 1,
     flexDirection: 'row',
     gap: 12,
@@ -2574,11 +2606,11 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     backgroundColor: '#F8B84E',
     borderColor: '#F6D186',
-    borderRadius: 8,
+    borderRadius: 999,
     borderWidth: 1,
     flexDirection: 'row',
     gap: 6,
-    minHeight: 40,
+    minHeight: 44,
     paddingHorizontal: 12,
   },
   authButtonDisabled: {
@@ -2592,8 +2624,8 @@ const styles = StyleSheet.create({
   rowCard: {
     alignItems: 'center',
     backgroundColor: '#FFFFFF',
-    borderColor: '#E1DBD2',
-    borderRadius: 8,
+    borderColor: '#E7E5E4',
+    borderRadius: 12,
     borderWidth: 1,
     flexDirection: 'row',
     justifyContent: 'space-between',
@@ -2601,15 +2633,15 @@ const styles = StyleSheet.create({
   },
   memoryCard: {
     backgroundColor: '#FFFFFF',
-    borderColor: '#E1DBD2',
-    borderRadius: 8,
+    borderColor: '#E7E5E4',
+    borderRadius: 12,
     borderWidth: 1,
     padding: 15,
   },
   newsCard: {
     backgroundColor: '#FFFFFF',
-    borderColor: '#E1DBD2',
-    borderRadius: 8,
+    borderColor: '#E7E5E4',
+    borderRadius: 12,
     borderWidth: 1,
     padding: 15,
   },
@@ -2648,18 +2680,14 @@ const styles = StyleSheet.create({
   },
   menuPanel: {
     backgroundColor: '#FFFFFF',
-    borderColor: '#E1DBD2',
-    borderRadius: 8,
+    borderColor: '#E7E5E4',
+    borderRadius: 14,
     borderWidth: 1,
-    elevation: 14,
+    elevation: 0,
     gap: 8,
     padding: 12,
     position: 'absolute',
     right: 20,
-    shadowColor: '#111827',
-    shadowOffset: { width: 0, height: 8 },
-    shadowOpacity: 0.16,
-    shadowRadius: 18,
     top: 12,
     width: 274,
   },
@@ -2683,9 +2711,9 @@ const styles = StyleSheet.create({
   },
   menuItem: {
     alignItems: 'center',
-    backgroundColor: '#FBFAF8',
-    borderColor: '#EEE8DF',
-    borderRadius: 8,
+    backgroundColor: '#F9FAFB',
+    borderColor: '#E5E7EB',
+    borderRadius: 12,
     borderWidth: 1,
     flexDirection: 'row',
     gap: 11,
@@ -2693,8 +2721,8 @@ const styles = StyleSheet.create({
   },
   menuItemIcon: {
     alignItems: 'center',
-    backgroundColor: '#F4F1EA',
-    borderRadius: 8,
+    backgroundColor: '#F3F4F6',
+    borderRadius: 12,
     height: 40,
     justifyContent: 'center',
     width: 40,
@@ -2715,7 +2743,7 @@ const styles = StyleSheet.create({
     marginTop: 4,
   },
   menuFooter: {
-    borderTopColor: '#EEF0F3',
+    borderTopColor: '#E5E7EB',
     borderTopWidth: 1,
     marginTop: 4,
     paddingTop: 10,
@@ -2729,8 +2757,8 @@ const styles = StyleSheet.create({
   profilePanel: {
     alignItems: 'center',
     backgroundColor: '#FFFFFF',
-    borderColor: '#E1DBD2',
-    borderRadius: 8,
+    borderColor: '#E7E5E4',
+    borderRadius: 14,
     borderWidth: 1,
     padding: 20,
   },
@@ -2766,9 +2794,9 @@ const styles = StyleSheet.create({
     width: '100%',
   },
   profileStat: {
-    backgroundColor: '#FBFAF8',
-    borderColor: '#EEE8DF',
-    borderRadius: 8,
+    backgroundColor: '#F9FAFB',
+    borderColor: '#E5E7EB',
+    borderRadius: 12,
     borderWidth: 1,
     flex: 1,
     padding: 10,
@@ -2788,8 +2816,8 @@ const styles = StyleSheet.create({
   },
   activePartyCard: {
     backgroundColor: '#FFFFFF',
-    borderColor: '#E1DBD2',
-    borderRadius: 8,
+    borderColor: '#E7E5E4',
+    borderRadius: 14,
     borderWidth: 1,
     padding: 18,
   },
@@ -2821,11 +2849,16 @@ const styles = StyleSheet.create({
     marginTop: 14,
   },
   memberChip: {
-    backgroundColor: '#F3F4F6',
-    borderRadius: 6,
+    alignItems: 'center',
+    backgroundColor: '#F9FAFB',
+    borderColor: '#E5E7EB',
+    borderRadius: 999,
+    borderWidth: 1,
     color: '#374151',
     fontSize: 12,
     fontWeight: '900',
+    flexDirection: 'row',
+    gap: 6,
     overflow: 'hidden',
     paddingHorizontal: 8,
     paddingVertical: 5,
@@ -2833,7 +2866,7 @@ const styles = StyleSheet.create({
   inviteCard: {
     alignItems: 'center',
     backgroundColor: '#15251F',
-    borderRadius: 8,
+    borderRadius: 14,
     flexDirection: 'row',
     justifyContent: 'space-between',
     padding: 16,
@@ -2851,11 +2884,11 @@ const styles = StyleSheet.create({
   },
   bottomNav: {
     backgroundColor: '#FFFFFF',
-    borderColor: '#DED8CF',
-    borderRadius: 12,
+    borderColor: '#E7E5E4',
+    borderRadius: 16,
     borderWidth: 1,
     bottom: 10,
-    elevation: 12,
+    elevation: 0,
     flexDirection: 'row',
     gap: 8,
     justifyContent: 'space-between',
@@ -2863,14 +2896,10 @@ const styles = StyleSheet.create({
     padding: 8,
     position: 'absolute',
     right: 18,
-    shadowColor: '#111827',
-    shadowOffset: { width: 0, height: 8 },
-    shadowOpacity: 0.14,
-    shadowRadius: 18,
   },
   navButton: {
     alignItems: 'center',
-    borderRadius: 8,
+    borderRadius: 12,
     flex: 1,
     gap: 3,
     justifyContent: 'center',

@@ -9,7 +9,7 @@ type AppMenuProps = {
 
 const menuItems: Array<{ section: SectionKey; title: string; text: string; icon: IconName }> = [
   { section: 'profil', title: 'Já', text: 'Profil, odznaky a nastavení.', icon: 'account-circle-outline' },
-  { section: 'party', title: 'Moje party', text: 'Parta Vyškov a pozvánky.', icon: 'account-group-outline' },
+  { section: 'party', title: 'Moje party', text: 'Skupiny a pozvánky.', icon: 'account-group-outline' },
   { section: 'kronika', title: 'Kronika', text: 'Fotky, videa a hlášky.', icon: 'image-multiple-outline' },
   { section: 'zpravy', title: 'Zprávy', text: 'Souhrny z okolí Vyškova.', icon: 'newspaper-variant-outline' },
 ];
@@ -41,7 +41,7 @@ export function AppMenu({ onClose, onSelect }: AppMenuProps) {
           </Pressable>
         ))}
         <View style={styles.menuFooter}>
-          <Text style={styles.menuFooterText}>Parta Vyškov</Text>
+          <Text style={styles.menuFooterText}>Žádná party</Text>
         </View>
       </View>
     </View>
