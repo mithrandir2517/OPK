@@ -148,6 +148,10 @@ export function subscribePartySync(
     return () => {};
   }
 
+  if (!inviteCode.trim()) {
+    return () => {};
+  }
+
   return onSnapshot(
     doc(firestore, 'parties', inviteCode),
     (snapshot) => {
@@ -173,6 +177,10 @@ export async function fetchPartySync(inviteCode: string) {
     return null;
   }
 
+  if (!inviteCode.trim()) {
+    return null;
+  }
+
   const snapshot = await getDocFromServer(doc(firestore, 'parties', inviteCode));
 
   if (!snapshot.exists()) {
@@ -184,6 +192,10 @@ export async function fetchPartySync(inviteCode: string) {
 
 export async function savePartySync(party: PartyState) {
   if (!firebaseEnabled || !firestore) {
+    return;
+  }
+
+  if (!party.inviteCode.trim()) {
     return;
   }
 
@@ -214,6 +226,10 @@ export function subscribeUserPartyRefs(uid: string, onChange: (partyRefs: PartyR
     return () => {};
   }
 
+  if (!uid.trim()) {
+    return () => {};
+  }
+
   const refsQuery = query(collection(firestore, 'users', uid, 'partyRefs'), orderBy('updatedAt', 'desc'));
 
   return onSnapshot(refsQuery, (snapshot) => {
@@ -227,6 +243,10 @@ export function subscribeUserPartyRefs(uid: string, onChange: (partyRefs: PartyR
 
 export async function savePartyRefSync(uid: string, party: PartyState) {
   if (!firebaseEnabled || !firestore) {
+    return;
+  }
+
+  if (!uid.trim() || !party.inviteCode.trim()) {
     return;
   }
 
@@ -274,6 +294,10 @@ export async function recordPartyEventSync(event: Omit<PartyEvent, 'id' | 'creat
     return;
   }
 
+  if (!event.partyCode.trim()) {
+    return;
+  }
+
   await addDoc(collection(firestore, 'parties', event.partyCode, 'events'), {
     ...event,
     createdAt: new Date().toISOString(),
@@ -282,6 +306,10 @@ export async function recordPartyEventSync(event: Omit<PartyEvent, 'id' | 'creat
 
 export async function removePartyMemberSync(inviteCode: string, member: PartyMember) {
   if (!firebaseEnabled || !firestore) {
+    return;
+  }
+
+  if (!inviteCode.trim()) {
     return;
   }
 
@@ -296,6 +324,10 @@ export async function deletePartySync(inviteCode: string) {
     return;
   }
 
+  if (!inviteCode.trim()) {
+    return;
+  }
+
   await deleteDoc(doc(firestore, 'parties', inviteCode));
 }
 
@@ -304,11 +336,19 @@ export async function deletePartyRefSync(uid: string, inviteCode: string) {
     return;
   }
 
+  if (!uid.trim() || !inviteCode.trim()) {
+    return;
+  }
+
   await deleteDoc(doc(firestore, 'users', uid, 'partyRefs', inviteCode));
 }
 
 export function subscribePivoSync(inviteCode: string, onChange: (pivoState: PivoState) => void) {
   if (!firebaseEnabled || !firestore) {
+    return () => {};
+  }
+
+  if (!inviteCode.trim()) {
     return () => {};
   }
 
@@ -339,6 +379,10 @@ export function subscribeObedSync(inviteCode: string, onChange: (obedState: Obed
     return () => {};
   }
 
+  if (!inviteCode.trim()) {
+    return () => {};
+  }
+
   return onSnapshot(doc(firestore, 'parties', inviteCode), (snapshot) => {
     if (!snapshot.exists()) {
       return;
@@ -357,6 +401,10 @@ export function subscribeObedSync(inviteCode: string, onChange: (obedState: Obed
 
 export async function savePivoSync(inviteCode: string, pivoState: PivoState) {
   if (!firebaseEnabled || !firestore) {
+    return;
+  }
+
+  if (!inviteCode.trim()) {
     return;
   }
 
@@ -379,6 +427,10 @@ export async function saveObedSync(inviteCode: string, obedState: ObedState) {
     return;
   }
 
+  if (!inviteCode.trim()) {
+    return;
+  }
+
   await setDoc(
     doc(firestore, 'parties', inviteCode),
     {
@@ -395,6 +447,10 @@ export async function saveObedSync(inviteCode: string, obedState: ObedState) {
 
 export function subscribeMemorySync(inviteCode: string, onChange: (memories: SavedMemory[]) => void) {
   if (!firebaseEnabled || !firestore) {
+    return () => {};
+  }
+
+  if (!inviteCode.trim()) {
     return () => {};
   }
 
@@ -416,6 +472,10 @@ export function subscribeMemorySync(inviteCode: string, onChange: (memories: Sav
 
 export async function addMemorySync(inviteCode: string, memory: SavedMemory) {
   if (!firebaseEnabled || !firestore) {
+    return;
+  }
+
+  if (!inviteCode.trim()) {
     return;
   }
 
