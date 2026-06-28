@@ -676,7 +676,7 @@ export default function App() {
   );
 
   const activeActivity = activityMeta[selectedActivity];
-  const activePartyCode = joinTargetCode ?? expandedPartyCode ?? party.inviteCode;
+  const activePartyCode = joinTargetCode || expandedPartyCode || party.inviteCode || partyRefs[0]?.inviteCode || '';
   const hasActivePartyCode = !!activePartyCode;
   const showAuthGate = storageReady && firebaseEnabled && !firebaseUser && !authGateDismissed;
 
