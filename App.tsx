@@ -586,6 +586,30 @@ export default function App() {
   }, [firebaseUser, joinTargetCode, storageReady]);
 
   useEffect(() => {
+    if (!storageReady || !firebaseEnabled || !firebaseUser || !party.inviteCode.trim() || noRealParty) {
+      return;
+    }
+
+    let mounted = true;
+
+    void fetchPartySync(party.inviteCode).then((remoteParty) => {
+      if (!mounted) {
+        return;
+      }
+
+      if (!remoteParty) {
+        setParty(defaultParty);
+        setExpandedPartyCode(null);
+        void removeJson(storageKeys.party);
+      }
+    });
+
+    return () => {
+      mounted = false;
+    };
+  }, [firebaseUser, firebaseEnabled, noRealParty, party.inviteCode, storageReady]);
+
+  useEffect(() => {
     if (!firebaseUser) {
       setPartyRefs([]);
       setPartyRefsReady(true);
