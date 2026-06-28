@@ -186,7 +186,76 @@ export function PartyScreen({
         <BackToOpk onPress={onBack} />
       </View>
 
-        <View style={styles.stackCard}>
+      <View style={styles.actionStrip}>
+        <Pressable
+          style={[styles.actionPill, actionOpen === 'create' && styles.actionPillActive]}
+          onPress={() => setActionOpen((current) => (current === 'create' ? null : 'create'))}
+        >
+          <MaterialCommunityIcons name="plus" size={20} color={actionOpen === 'create' ? '#111827' : '#6B7280'} />
+          <Text style={[styles.actionPillText, actionOpen === 'create' && styles.actionPillTextActive]}>Nová</Text>
+        </Pressable>
+        <Pressable
+          style={[styles.actionPill, actionOpen === 'join' && styles.actionPillActive]}
+          onPress={() => setActionOpen((current) => (current === 'join' ? null : 'join'))}
+        >
+          <MaterialCommunityIcons name="link-variant" size={20} color={actionOpen === 'join' ? '#111827' : '#6B7280'} />
+          <Text style={[styles.actionPillText, actionOpen === 'join' && styles.actionPillTextActive]}>Připojit</Text>
+        </Pressable>
+      </View>
+
+      {actionOpen === 'create' ? (
+        <View style={styles.expandedActionCard}>
+          <View style={styles.expandedActionHeader}>
+            <View>
+              <Text style={styles.formTitle}>Nová party</Text>
+              <Text style={styles.cardText}>Založí novou sdílenou partu.</Text>
+            </View>
+            <Pressable style={styles.actionCloseButton} onPress={closeAction}>
+              <MaterialCommunityIcons name="close" size={18} color="#6B7280" />
+            </Pressable>
+          </View>
+          <Pressable style={[styles.shareButton, styles.shareButtonPrimary]} onPress={onCreateParty}>
+            <Text style={styles.shareButtonPrimaryText}>Založit</Text>
+          </Pressable>
+        </View>
+      ) : null}
+
+      {actionOpen === 'join' ? (
+        <View style={styles.expandedActionCard}>
+          <View style={styles.expandedActionHeader}>
+            <View>
+              <Text style={styles.formTitle}>Připojit se</Text>
+              <Text style={styles.cardText}>Zadej kód party.</Text>
+            </View>
+            <Pressable style={styles.actionCloseButton} onPress={closeAction}>
+              <MaterialCommunityIcons name="close" size={18} color="#6B7280" />
+            </Pressable>
+          </View>
+          <View style={styles.formField}>
+            <Text style={styles.inputLabel}>Kód party</Text>
+            <TextInput
+              value={inviteCode}
+              onChangeText={setInviteCode}
+              placeholder="OPK846"
+              placeholderTextColor="#9CA3AF"
+              autoCapitalize="characters"
+              style={styles.textInput}
+            />
+          </View>
+          <Pressable style={[styles.shareButton, styles.shareButtonPrimary]} onPress={() => onJoinParty(inviteCode)}>
+            <Text style={styles.shareButtonPrimaryText}>{isJoining ? 'Připojuji…' : 'Připojit se'}</Text>
+          </Pressable>
+          <Text style={styles.syncStatus}>
+            {syncError
+              ? `Firebase chyba: ${syncError}`
+              : isJoining && joinTargetCode
+              ? `Načítám ${joinTargetCode}.`
+              : 'Kód se zobrazí po vytvoření.'}
+          </Text>
+        </View>
+      ) : null}
+
+      <View style={styles.stackCard}>
           <View style={styles.listHeader}>
             <View>
               <Text style={styles.formTitle}>Party</Text>
@@ -356,76 +425,7 @@ export function PartyScreen({
             })}
           </View>
         )}
-
-        <View style={styles.actionStrip}>
-          <Pressable
-            style={[styles.actionPill, actionOpen === 'create' && styles.actionPillActive]}
-            onPress={() => setActionOpen((current) => (current === 'create' ? null : 'create'))}
-          >
-            <MaterialCommunityIcons name="plus" size={20} color={actionOpen === 'create' ? '#111827' : '#6B7280'} />
-            <Text style={[styles.actionPillText, actionOpen === 'create' && styles.actionPillTextActive]}>Nová</Text>
-          </Pressable>
-          <Pressable
-            style={[styles.actionPill, actionOpen === 'join' && styles.actionPillActive]}
-            onPress={() => setActionOpen((current) => (current === 'join' ? null : 'join'))}
-          >
-            <MaterialCommunityIcons name="link-variant" size={20} color={actionOpen === 'join' ? '#111827' : '#6B7280'} />
-            <Text style={[styles.actionPillText, actionOpen === 'join' && styles.actionPillTextActive]}>Připojit</Text>
-          </Pressable>
-        </View>
       </View>
-
-      {actionOpen === 'create' ? (
-        <View style={styles.expandedActionCard}>
-          <View style={styles.expandedActionHeader}>
-            <View>
-              <Text style={styles.formTitle}>Nová party</Text>
-              <Text style={styles.cardText}>Vytvoří novou sdílenou partu z aktuálních hodnot.</Text>
-            </View>
-            <Pressable style={styles.actionCloseButton} onPress={closeAction}>
-              <MaterialCommunityIcons name="close" size={18} color="#6B7280" />
-            </Pressable>
-          </View>
-          <Pressable style={[styles.shareButton, styles.shareButtonPrimary]} onPress={onCreateParty}>
-            <Text style={styles.shareButtonPrimaryText}>Vytvořit</Text>
-          </Pressable>
-        </View>
-      ) : null}
-
-      {actionOpen === 'join' ? (
-        <View style={styles.expandedActionCard}>
-          <View style={styles.expandedActionHeader}>
-            <View>
-              <Text style={styles.formTitle}>Připojit se</Text>
-              <Text style={styles.cardText}>Zadej kód party.</Text>
-            </View>
-            <Pressable style={styles.actionCloseButton} onPress={closeAction}>
-              <MaterialCommunityIcons name="close" size={18} color="#6B7280" />
-            </Pressable>
-          </View>
-          <View style={styles.formField}>
-            <Text style={styles.inputLabel}>Kód party</Text>
-            <TextInput
-              value={inviteCode}
-              onChangeText={setInviteCode}
-              placeholder="OPK846"
-              placeholderTextColor="#9CA3AF"
-              autoCapitalize="characters"
-              style={styles.textInput}
-            />
-          </View>
-          <Pressable style={[styles.shareButton, styles.shareButtonPrimary]} onPress={() => onJoinParty(inviteCode)}>
-            <Text style={styles.shareButtonPrimaryText}>{isJoining ? 'Připojuji…' : 'Připojit se'}</Text>
-          </Pressable>
-          <Text style={styles.syncStatus}>
-            {syncError
-              ? `Firebase chyba: ${syncError}`
-              : isJoining && joinTargetCode
-              ? `Načítám ${joinTargetCode}.`
-              : 'Kód se zobrazí po vytvoření.'}
-          </Text>
-        </View>
-      ) : null}
     </>
   );
 }
