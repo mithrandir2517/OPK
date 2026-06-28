@@ -659,6 +659,7 @@ export default function App() {
 
   const activeActivity = activityMeta[selectedActivity];
   const activePartyCode = joinTargetCode ?? expandedPartyCode ?? party.inviteCode;
+  const hasActivePartyCode = !!activePartyCode;
   const showAuthGate = storageReady && firebaseEnabled && !firebaseUser && !authGateDismissed;
 
   const handleCreateParty = () => {
@@ -822,7 +823,7 @@ export default function App() {
           <PivoScreen
             accent={activeActivity.accent}
             partyCode={activePartyCode}
-            canSync={firebaseEnabled && !!firebaseUser && !noRealParty}
+            canSync={firebaseEnabled && !!firebaseUser && !noRealParty && hasActivePartyCode}
             viewerId={firebaseUser?.uid ?? null}
             viewerName={firebaseUser?.displayName ?? profile.name}
             partyMembers={party.members}
@@ -832,7 +833,7 @@ export default function App() {
             <ObedScreen
               accent={activeActivity.accent}
               partyCode={activePartyCode}
-              canSync={firebaseEnabled && !!firebaseUser && !noRealParty}
+              canSync={firebaseEnabled && !!firebaseUser && !noRealParty && hasActivePartyCode}
               viewerId={firebaseUser?.uid ?? null}
               viewerName={firebaseUser?.displayName ?? profile.name}
             />
@@ -841,7 +842,7 @@ export default function App() {
             <KoloScreen
               accent={activeActivity.accent}
               partyCode={activePartyCode}
-              canSync={firebaseEnabled && !!firebaseUser && !noRealParty}
+              canSync={firebaseEnabled && !!firebaseUser && !noRealParty && hasActivePartyCode}
               viewerId={firebaseUser?.uid ?? null}
               viewerName={firebaseUser?.displayName ?? profile.name}
             />
@@ -850,7 +851,7 @@ export default function App() {
             <KronikaScreen
               onBack={() => setSelectedSection(selectedActivity)}
               partyCode={activePartyCode}
-              canSync={firebaseEnabled && !!firebaseUser && !noRealParty}
+              canSync={firebaseEnabled && !!firebaseUser && !noRealParty && hasActivePartyCode}
             />
           )}
           {selectedSection === 'zpravy' && <ZpravyScreen onBack={() => setSelectedSection(selectedActivity)} />}
