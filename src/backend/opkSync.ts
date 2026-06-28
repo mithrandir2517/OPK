@@ -17,6 +17,12 @@ import {
 import { firestore, firebaseEnabled } from './firebase';
 import { ObedState, PartyEvent, PartyMember, PartyRef, PartyState, PivoState, SavedMemory } from '../types';
 
+const legacyDemoPartyCode = 'OPK-VYSKOV';
+
+function isLegacyDemoPartyCode(inviteCode: string) {
+  return inviteCode.trim() === legacyDemoPartyCode;
+}
+
 function normalizePartyMembers(value: unknown): PartyMember[] {
   if (!Array.isArray(value)) {
     return [];
@@ -100,6 +106,10 @@ function mapPartyRefData(data: Record<string, unknown>): PartyRef | null {
     return null;
   }
 
+  if (isLegacyDemoPartyCode(data.inviteCode)) {
+    return null;
+  }
+
   return {
     inviteCode: data.inviteCode,
     name: data.name,
@@ -152,6 +162,10 @@ export function subscribePartySync(
     return () => {};
   }
 
+  if (isLegacyDemoPartyCode(inviteCode)) {
+    return () => {};
+  }
+
   return onSnapshot(
     doc(firestore, 'parties', inviteCode),
     (snapshot) => {
@@ -181,6 +195,10 @@ export async function fetchPartySync(inviteCode: string) {
     return null;
   }
 
+  if (isLegacyDemoPartyCode(inviteCode)) {
+    return null;
+  }
+
   const snapshot = await getDocFromServer(doc(firestore, 'parties', inviteCode));
 
   if (!snapshot.exists()) {
@@ -196,6 +214,10 @@ export async function savePartySync(party: PartyState) {
   }
 
   if (!party.inviteCode.trim()) {
+    return;
+  }
+
+  if (isLegacyDemoPartyCode(party.inviteCode)) {
     return;
   }
 
@@ -250,6 +272,10 @@ export async function savePartyRefSync(uid: string, party: PartyState) {
     return;
   }
 
+  if (isLegacyDemoPartyCode(party.inviteCode)) {
+    return;
+  }
+
   await setDoc(
     doc(firestore, 'users', uid, 'partyRefs', party.inviteCode),
     {
@@ -298,6 +324,10 @@ export async function recordPartyEventSync(event: Omit<PartyEvent, 'id' | 'creat
     return;
   }
 
+  if (isLegacyDemoPartyCode(event.partyCode)) {
+    return;
+  }
+
   await addDoc(collection(firestore, 'parties', event.partyCode, 'events'), {
     ...event,
     createdAt: new Date().toISOString(),
@@ -310,6 +340,10 @@ export async function removePartyMemberSync(inviteCode: string, member: PartyMem
   }
 
   if (!inviteCode.trim()) {
+    return;
+  }
+
+  if (isLegacyDemoPartyCode(inviteCode)) {
     return;
   }
 
@@ -328,6 +362,10 @@ export async function deletePartySync(inviteCode: string) {
     return;
   }
 
+  if (isLegacyDemoPartyCode(inviteCode)) {
+    return;
+  }
+
   await deleteDoc(doc(firestore, 'parties', inviteCode));
 }
 
@@ -340,6 +378,10 @@ export async function deletePartyRefSync(uid: string, inviteCode: string) {
     return;
   }
 
+  if (isLegacyDemoPartyCode(inviteCode)) {
+    return;
+  }
+
   await deleteDoc(doc(firestore, 'users', uid, 'partyRefs', inviteCode));
 }
 
@@ -349,6 +391,10 @@ export function subscribePivoSync(inviteCode: string, onChange: (pivoState: Pivo
   }
 
   if (!inviteCode.trim()) {
+    return () => {};
+  }
+
+  if (isLegacyDemoPartyCode(inviteCode)) {
     return () => {};
   }
 
@@ -383,6 +429,10 @@ export function subscribeObedSync(inviteCode: string, onChange: (obedState: Obed
     return () => {};
   }
 
+  if (isLegacyDemoPartyCode(inviteCode)) {
+    return () => {};
+  }
+
   return onSnapshot(doc(firestore, 'parties', inviteCode), (snapshot) => {
     if (!snapshot.exists()) {
       return;
@@ -408,6 +458,10 @@ export async function savePivoSync(inviteCode: string, pivoState: PivoState) {
     return;
   }
 
+  if (isLegacyDemoPartyCode(inviteCode)) {
+    return;
+  }
+
   await setDoc(
     doc(firestore, 'parties', inviteCode),
     {
@@ -428,6 +482,10 @@ export async function saveObedSync(inviteCode: string, obedState: ObedState) {
   }
 
   if (!inviteCode.trim()) {
+    return;
+  }
+
+  if (isLegacyDemoPartyCode(inviteCode)) {
     return;
   }
 
