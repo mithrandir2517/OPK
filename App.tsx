@@ -460,7 +460,7 @@ export default function App() {
   }, [firebaseUser, firebaseEnabled, profile.notificationsEnabled, storageReady]);
 
   useEffect(() => {
-    if (!storageReady || !firebaseUser) {
+    if (!storageReady || !firebaseUser || !party.inviteCode.trim()) {
       return;
     }
 
@@ -478,7 +478,7 @@ export default function App() {
             members: [...current.members, member],
           },
     );
-  }, [firebaseUser, profile.name, storageReady]);
+  }, [firebaseUser, party.inviteCode, profile.name, storageReady]);
 
   useEffect(() => {
     if (!storageReady) {

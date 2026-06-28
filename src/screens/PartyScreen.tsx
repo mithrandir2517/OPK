@@ -62,9 +62,14 @@ export function PartyScreen({
   useEffect(() => {
     setDisplayPartyCodes((current) => {
       const next: string[] = [];
+      const currentCode = activePartyCode.trim();
 
       current.forEach((code) => {
-        if (code === activePartyCode || partyRefs.some((item) => item.inviteCode === code)) {
+        if (!code.trim()) {
+          return;
+        }
+
+        if (code === currentCode || partyRefs.some((item) => item.inviteCode === code)) {
           if (!next.includes(code)) {
             next.push(code);
           }
@@ -72,13 +77,17 @@ export function PartyScreen({
       });
 
       partyRefs.forEach((item) => {
+        if (!item.inviteCode.trim()) {
+          return;
+        }
+
         if (!next.includes(item.inviteCode)) {
           next.push(item.inviteCode);
         }
       });
 
-      if (!next.includes(activePartyCode)) {
-        next.unshift(activePartyCode);
+      if (currentCode && !next.includes(currentCode)) {
+        next.unshift(currentCode);
       }
 
       return next;
@@ -89,6 +98,10 @@ export function PartyScreen({
     () =>
       displayPartyCodes
         .map((code) => {
+          if (!code.trim()) {
+            return null;
+          }
+
           const remote = partyRefs.find((item) => item.inviteCode === code);
           if (remote) {
             return remote;
