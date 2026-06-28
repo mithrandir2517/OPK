@@ -13,7 +13,7 @@ type PartyScreenProps = {
   viewerUid: string | null;
   canSync: boolean;
   onChangeParty: (party: PartyState) => void;
-  onCreateParty: () => void;
+  onCreateParty: (party: PartyState) => void;
   onJoinParty: (inviteCode: string) => void;
   onSelectParty: (inviteCode: string) => void;
   onLeaveParty: () => void;
@@ -45,6 +45,13 @@ export function PartyScreen({
   const [inviteCode, setInviteCode] = useState('');
   const [editOpen, setEditOpen] = useState(false);
   const [actionOpen, setActionOpen] = useState<'create' | 'join' | null>(null);
+  const [createDraftParty, setCreateDraftParty] = useState<PartyState>({
+    name: '',
+    city: '',
+    members: [],
+    inviteCode: '',
+    creatorUid: null,
+  });
   const [draftParty, setDraftParty] = useState(party);
   const [displayPartyCodes, setDisplayPartyCodes] = useState<string[]>([]);
   const activePartyCode = expandedPartyCode ?? party.inviteCode;
@@ -162,6 +169,21 @@ export function PartyScreen({
     setEditOpen(true);
   };
 
+  const startCreating = () => {
+    setCreateDraftParty({
+      name: '',
+      city: '',
+      members: [],
+      inviteCode: '',
+      creatorUid: null,
+    });
+    setActionOpen('create');
+  };
+
+  const updateCreateDraft = (nextParty: Partial<PartyState>) => {
+    setCreateDraftParty((current) => ({ ...current, ...nextParty }));
+  };
+
   const cancelEditing = () => {
     setDraftParty(party);
     setNewMember('');
@@ -171,12 +193,24 @@ export function PartyScreen({
   const closeAction = () => {
     setActionOpen(null);
     setInviteCode('');
+    setCreateDraftParty({
+      name: '',
+      city: '',
+      members: [],
+      inviteCode: '',
+      creatorUid: null,
+    });
   };
 
   const saveEditing = () => {
     onChangeParty(draftParty);
     setEditOpen(false);
     setNewMember('');
+  };
+
+  const saveCreating = () => {
+    onCreateParty(createDraftParty);
+    closeAction();
   };
 
   return (
@@ -189,7 +223,7 @@ export function PartyScreen({
       <View style={styles.actionStrip}>
         <Pressable
           style={[styles.actionPill, actionOpen === 'create' && styles.actionPillActive]}
-          onPress={() => setActionOpen((current) => (current === 'create' ? null : 'create'))}
+          onPress={() => (actionOpen === 'create' ? closeAction() : startCreating())}
         >
           <MaterialCommunityIcons name="plus" size={20} color={actionOpen === 'create' ? '#111827' : '#6B7280'} />
           <Text style={[styles.actionPillText, actionOpen === 'create' && styles.actionPillTextActive]}>Nová</Text>
@@ -202,23 +236,6 @@ export function PartyScreen({
           <Text style={[styles.actionPillText, actionOpen === 'join' && styles.actionPillTextActive]}>Připojit</Text>
         </Pressable>
       </View>
-
-      {actionOpen === 'create' ? (
-        <View style={styles.expandedActionCard}>
-          <View style={styles.expandedActionHeader}>
-            <View>
-              <Text style={styles.formTitle}>Nová party</Text>
-              <Text style={styles.cardText}>Založí novou sdílenou partu.</Text>
-            </View>
-            <Pressable style={styles.actionCloseButton} onPress={closeAction}>
-              <MaterialCommunityIcons name="close" size={18} color="#6B7280" />
-            </Pressable>
-          </View>
-          <Pressable style={[styles.shareButton, styles.shareButtonPrimary]} onPress={onCreateParty}>
-            <Text style={styles.shareButtonPrimaryText}>Založit</Text>
-          </Pressable>
-        </View>
-      ) : null}
 
       {actionOpen === 'join' ? (
         <View style={styles.expandedActionCard}>
@@ -266,6 +283,52 @@ export function PartyScreen({
               <Text style={styles.listCount}>{partyRefs.length}</Text>
             </View>
           </View>
+
+        {actionOpen === 'create' ? (
+          <View style={[styles.partyRow, styles.partyRowActive, styles.partyRowExpanded]}>
+            <View style={styles.activeRowTop}>
+              <View style={styles.partyRowCopy}>
+                <Text style={styles.activeCardLabel}>Nová party</Text>
+                <Text style={styles.activePartyTitle}>Vytvořit novou</Text>
+                <Text style={styles.activePartyMeta}>Vyplň název a město, pak ulož.</Text>
+              </View>
+              <View style={styles.headerActions}>
+                <View style={styles.iconSlot}>
+                  <Pressable style={styles.iconButton} onPress={saveCreating}>
+                    <MaterialCommunityIcons name="check" size={20} color="#15251F" />
+                  </Pressable>
+                </View>
+                <View style={styles.iconSlot}>
+                  <Pressable style={styles.iconButton} onPress={closeAction}>
+                    <MaterialCommunityIcons name="close" size={18} color="#15251F" />
+                  </Pressable>
+                </View>
+              </View>
+            </View>
+            <View style={styles.editPanel}>
+              <View style={styles.formField}>
+                <Text style={styles.inputLabel}>Název party</Text>
+                <TextInput
+                  value={createDraftParty.name}
+                  onChangeText={(name) => updateCreateDraft({ name })}
+                  placeholder="Parta Vyškov"
+                  placeholderTextColor="#9CA3AF"
+                  style={styles.textInput}
+                />
+              </View>
+              <View style={styles.formField}>
+                <Text style={styles.inputLabel}>Město</Text>
+                <TextInput
+                  value={createDraftParty.city}
+                  onChangeText={(city) => updateCreateDraft({ city })}
+                  placeholder="Vyškov"
+                  placeholderTextColor="#9CA3AF"
+                  style={styles.textInput}
+                />
+              </View>
+            </View>
+          </View>
+        ) : null}
 
         {showEmptyState ? (
           <View style={styles.emptyStateCard}>

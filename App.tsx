@@ -683,7 +683,7 @@ export default function App() {
   const hasActivePartyCode = !!activePartyCode;
   const showAuthGate = storageReady && firebaseEnabled && !firebaseUser && !authGateDismissed;
 
-  const handleCreateParty = () => {
+  const handleCreateParty = (draftParty: PartyState) => {
     const creator =
       firebaseUser
         ? makePartyMember({ uid: firebaseUser.uid, displayName: firebaseUser.displayName, email: firebaseUser.email }, profile)
@@ -696,8 +696,8 @@ export default function App() {
     setJoinTargetCode(null);
     setPartySyncError(null);
     const nextParty = {
-      ...party,
-      inviteCode: makePartyCode(party.name, party.city),
+      ...draftParty,
+      inviteCode: makePartyCode(draftParty.name, draftParty.city),
       members: [creator],
       creatorUid: firebaseUser?.uid ?? null,
     };
