@@ -110,6 +110,10 @@ function mapPartyRefData(data: Record<string, unknown>): PartyRef | null {
     return null;
   }
 
+  if (data.name === 'Parta Vyškov' && data.city === 'Vyškov') {
+    return null;
+  }
+
   return {
     inviteCode: data.inviteCode,
     name: data.name,

@@ -174,31 +174,10 @@ function normalizeParty(value: Partial<PartyState> | null): PartyState {
 }
 
 function isLegacyPlaceholderParty(value: Partial<PartyState> | null) {
-  const rawMembers = (value?.members ?? []) as unknown[];
-  const memberNames = rawMembers.reduce<string[]>((accumulator, member) => {
-        if (typeof member === 'string') {
-          const displayName = member.trim();
-          if (displayName) {
-            accumulator.push(displayName);
-          }
-          return accumulator;
-        }
-
-        if (member && typeof member === 'object' && typeof (member as Record<string, unknown>).displayName === 'string') {
-          const displayName = String((member as Record<string, unknown>).displayName).trim();
-          if (displayName) {
-            accumulator.push(displayName);
-          }
-        }
-
-        return accumulator;
-      }, []);
-
   return (
-    (!!memberNames.length && memberNames.every((name) => ['Marek', 'Tomáš', 'Pavel'].includes(name))) &&
-    (!value?.name || value.name === 'Parta Vyškov') &&
-    (!value?.city || value.city === 'Vyškov') &&
-    (!value?.inviteCode || value.inviteCode === 'OPK-VYSKOV')
+    value?.inviteCode === 'OPK-VYSKOV' ||
+    (typeof value?.name === 'string' && value.name.trim() === 'Parta Vyškov') ||
+    (typeof value?.city === 'string' && value.city.trim() === 'Vyškov')
   );
 }
 
