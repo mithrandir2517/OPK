@@ -311,6 +311,7 @@ export default function App() {
   const [partyRefsReady, setPartyRefsReady] = useState(false);
   const [expandedPartyCode, setExpandedPartyCode] = useState<string | null>(null);
   const [pendingPartyCode, setPendingPartyCode] = useState<string | null>(null);
+  const [partyDropdownOpen, setPartyDropdownOpen] = useState(false);
   const [overviewNotificationTick, setOverviewNotificationTick] = useState(0);
   const [overviewTargetActivity, setOverviewTargetActivity] = useState<ActivityKey | null>(null);
   const [partyCreateInFlight, setPartyCreateInFlight] = useState(false);
@@ -971,12 +972,16 @@ export default function App() {
         <View style={styles.header}>
           <View style={styles.headerLeft}>
               <OpkLogo />
-              <Pressable style={styles.partyPill} onPress={() => setSelectedSection('party')}>
+            <Pressable style={styles.partyPill} onPress={() => setPartyDropdownOpen((open) => !open)}>
               <Text style={styles.partyLabel}>Parta</Text>
               <Text style={styles.partyName}>
                 {showEmptyPartyState ? 'Žádná party' : partySyncMode === 'joining' ? 'Načítám…' : party.name}
               </Text>
-              <MaterialCommunityIcons name="chevron-down" size={18} color="#6B7280" />
+              <MaterialCommunityIcons
+                name={partyDropdownOpen ? 'chevron-up' : 'chevron-down'}
+                size={18}
+                color="#6B7280"
+              />
             </Pressable>
           </View>
           <Pressable style={styles.menuButton} onPress={() => setMenuOpen((open) => !open)}>
@@ -1086,6 +1091,60 @@ export default function App() {
           )}
         </ScrollView>
 
+        {partyDropdownOpen && (
+          <View style={styles.partyDropdownOverlay}>
+            <Pressable style={styles.partyDropdownScrim} onPress={() => setPartyDropdownOpen(false)} />
+            <View style={styles.partyDropdownPanel}>
+              <Pressable
+                style={styles.partyDropdownItem}
+                onPress={() => {
+                  setPartyDropdownOpen(false);
+                  setSelectedSection('party');
+                }}
+              >
+                <View style={styles.partyDropdownItemCopy}>
+                  <Text style={styles.partyDropdownTitle}>Moje party</Text>
+                  <Text style={styles.partyDropdownText}>Správa, členové a pozvánky.</Text>
+                </View>
+                <MaterialCommunityIcons name="account-group-outline" size={22} color="#111827" />
+              </Pressable>
+
+              <View style={styles.partyDropdownList}>
+                {partyRefs.map((ref) => {
+                  const isCurrentParty = ref.inviteCode === party.inviteCode;
+                  const isPendingParty = ref.inviteCode === pendingPartyCode;
+
+                  return (
+                    <Pressable
+                      key={ref.inviteCode}
+                      style={styles.partyDropdownItem}
+                      onPress={() => {
+                        setPartyDropdownOpen(false);
+                        setSelectedSection('prehled');
+                        if (!isCurrentParty && !isPendingParty) {
+                          handleSelectParty(ref.inviteCode);
+                        }
+                      }}
+                    >
+                      <View style={styles.partyDropdownItemCopy}>
+                        <Text style={styles.partyDropdownTitle}>{ref.name || ref.inviteCode}</Text>
+                        <Text style={styles.partyDropdownText}>
+                          {ref.city || 'Bez města'} · {ref.memberCount} členů
+                        </Text>
+                      </View>
+                      <MaterialCommunityIcons
+                        name={isCurrentParty ? 'check-circle' : isPendingParty ? 'progress-clock' : 'chevron-right'}
+                        size={20}
+                        color={isCurrentParty ? '#0F766E' : '#6B7280'}
+                      />
+                    </Pressable>
+                  );
+                })}
+              </View>
+            </View>
+          </View>
+        )}
+
         {menuOpen && (
           <AppMenu
             onClose={() => setMenuOpen(false)}
@@ -1181,17 +1240,36 @@ function AuthGateScreen({
     <SafeAreaView style={styles.safeArea}>
       <StatusBar style="dark" />
       <View style={styles.authGate}>
-        <View style={styles.authGateHero}>
-          <OpkLogo />
-          <Text style={styles.authGateTitle}>Oběd Pivo Kolo</Text>
-          <Text style={styles.authGateText}>
-            Přihlas se přes Google, a party, Pivo a Kronika se propojí mezi telefony.
-          </Text>
-        </View>
+        <View style={styles.authGateShell}>
+          <View style={styles.authGateHero}>
+            <View style={styles.authGateLogoWrap}>
+              <OpkLogo />
+            </View>
+            <Text style={styles.authGateKicker}>Společné plány pro partu</Text>
+            <Text style={styles.authGateTitle}>Oběd Pivo Kolo</Text>
+            <Text style={styles.authGateText}>
+              Přihlas se přes Google a otevři sdílené party, pozvánky a odpovědi mezi telefony.
+            </Text>
+            <View style={styles.authGateFeatureRow}>
+              <View style={styles.authGateFeature}>
+                <MaterialCommunityIcons name="silverware-fork-knife" size={18} color="#0F766E" />
+                <Text style={styles.authGateFeatureText}>Oběd</Text>
+              </View>
+              <View style={styles.authGateFeature}>
+                <MaterialCommunityIcons name="glass-mug-variant" size={18} color="#B45309" />
+                <Text style={styles.authGateFeatureText}>Pivo</Text>
+              </View>
+              <View style={styles.authGateFeature}>
+                <MaterialCommunityIcons name="bike" size={18} color="#2563EB" />
+                <Text style={styles.authGateFeatureText}>Kolo</Text>
+              </View>
+            </View>
+          </View>
         {signInCard}
-        <Pressable style={styles.authGateContinue} onPress={onContinue}>
-          <Text style={styles.authGateContinueText}>Pokračovat bez přihlášení</Text>
-        </Pressable>
+          <Pressable style={styles.authGateContinue} onPress={onContinue}>
+            <Text style={styles.authGateContinueText}>Pokračovat bez přihlášení</Text>
+          </Pressable>
+        </View>
       </View>
     </SafeAreaView>
   );
@@ -1480,12 +1558,10 @@ function OverviewScreen({
                       <View
                         style={[
                           styles.overviewBadge,
-                          activeInvite
-                            ? { backgroundColor: `${card.accent}15` }
-                            : { backgroundColor: '#F3F4F6' },
+                          activeInvite ? { backgroundColor: '#DC2626' } : { backgroundColor: '#F3F4F6' },
                         ]}
                       >
-                        <Text style={[styles.overviewBadgeText, { color: activeInvite ? card.accent : '#6B7280' }]}>
+                        <Text style={[styles.overviewBadgeText, { color: activeInvite ? '#FFFFFF' : '#6B7280' }]}>
                           {visibleCount}
                         </Text>
                       </View>
@@ -2469,6 +2545,64 @@ const styles = StyleSheet.create({
     minHeight: 42,
     paddingHorizontal: 12,
   },
+  partyDropdownOverlay: {
+    bottom: 0,
+    left: 0,
+    position: 'absolute',
+    right: 0,
+    top: 0,
+    zIndex: 11,
+  },
+  partyDropdownScrim: {
+    bottom: 0,
+    left: 0,
+    position: 'absolute',
+    right: 0,
+    top: 0,
+  },
+  partyDropdownPanel: {
+    backgroundColor: '#FFFFFF',
+    borderColor: '#E5E7EB',
+    borderRadius: 12,
+    borderWidth: 1,
+    elevation: 12,
+    left: 18,
+    padding: 10,
+    position: 'absolute',
+    top: 56,
+    width: 290,
+  },
+  partyDropdownList: {
+    gap: 6,
+    marginTop: 8,
+  },
+  partyDropdownItem: {
+    alignItems: 'center',
+    backgroundColor: '#F9FAFB',
+    borderColor: '#E5E7EB',
+    borderRadius: 10,
+    borderWidth: 1,
+    flexDirection: 'row',
+    gap: 10,
+    justifyContent: 'space-between',
+    minHeight: 52,
+    paddingHorizontal: 12,
+    paddingVertical: 10,
+  },
+  partyDropdownItemCopy: {
+    flex: 1,
+  },
+  partyDropdownTitle: {
+    color: '#111827',
+    fontSize: 15,
+    fontWeight: '900',
+  },
+  partyDropdownText: {
+    color: '#6B7280',
+    fontSize: 12,
+    fontWeight: '700',
+    marginTop: 2,
+  },
   partyLabel: {
     color: '#6B7280',
     fontSize: 11,
@@ -3012,29 +3146,81 @@ const styles = StyleSheet.create({
     paddingHorizontal: 18,
     paddingVertical: 24,
   },
+  authGateShell: {
+    alignSelf: 'center',
+    gap: 14,
+    maxWidth: 420,
+    width: '100%',
+  },
   authGateHero: {
     alignItems: 'center',
-    marginBottom: 18,
+    backgroundColor: '#FFFFFF',
+    borderColor: '#E7E5E4',
+    borderRadius: 20,
+    borderWidth: 1,
+    gap: 10,
+    padding: 20,
+  },
+  authGateLogoWrap: {
+    backgroundColor: '#FAFAF9',
+    borderColor: '#E7E5E4',
+    borderRadius: 999,
+    borderWidth: 1,
+    padding: 12,
+  },
+  authGateKicker: {
+    color: '#6B7280',
+    fontSize: 12,
+    fontWeight: '900',
+    textTransform: 'uppercase',
   },
   authGateTitle: {
     color: '#111827',
-    fontSize: 26,
+    fontSize: 28,
     fontWeight: '900',
-    marginTop: 14,
+    letterSpacing: 0,
     textAlign: 'center',
   },
   authGateText: {
     color: '#4B5563',
     fontSize: 14,
     fontWeight: '700',
-    lineHeight: 20,
-    marginTop: 8,
+    lineHeight: 21,
     textAlign: 'center',
+  },
+  authGateFeatureRow: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    gap: 8,
+    justifyContent: 'center',
+    marginTop: 4,
+  },
+  authGateFeature: {
+    alignItems: 'center',
+    backgroundColor: '#F9FAFB',
+    borderColor: '#E5E7EB',
+    borderRadius: 999,
+    borderWidth: 1,
+    flexDirection: 'row',
+    gap: 6,
+    minHeight: 40,
+    paddingHorizontal: 12,
+    paddingVertical: 8,
+  },
+  authGateFeatureText: {
+    color: '#111827',
+    fontSize: 13,
+    fontWeight: '900',
   },
   authGateContinue: {
     alignItems: 'center',
-    marginTop: 12,
-    paddingVertical: 10,
+    backgroundColor: '#FFFFFF',
+    borderColor: '#E7E5E4',
+    borderRadius: 14,
+    borderWidth: 1,
+    minHeight: 46,
+    justifyContent: 'center',
+    paddingHorizontal: 14,
   },
   authGateContinueText: {
     color: '#6B7280',
@@ -3050,7 +3236,7 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     gap: 12,
     marginHorizontal: 18,
-    marginTop: 12,
+    marginTop: 0,
     padding: 14,
   },
   authBannerCopy: {
@@ -3070,14 +3256,15 @@ const styles = StyleSheet.create({
   },
   authButton: {
     alignItems: 'center',
-    backgroundColor: '#F8B84E',
-    borderColor: '#F6D186',
+    backgroundColor: '#F9FAFB',
+    borderColor: '#E5E7EB',
     borderRadius: 999,
     borderWidth: 1,
     flexDirection: 'row',
-    gap: 6,
+    gap: 8,
     minHeight: 44,
-    paddingHorizontal: 12,
+    justifyContent: 'center',
+    paddingHorizontal: 14,
   },
   authButtonDisabled: {
     opacity: 0.5,
