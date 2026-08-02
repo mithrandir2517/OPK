@@ -7,6 +7,7 @@ import { subscribeActivityVotesSync } from '../backend/pollSync';
 import { ActivityPanel } from '../components/ActivityPanel';
 import { loadJson, saveJson, storageKeys } from '../storage/localStorage';
 import { ActivityRoundState, ActivityVote } from '../types';
+import { buildInviteNotificationCopy } from '../utils/inviteNotification';
 import { getRoundExpiresAt } from '../utils/roundExpiry';
 
 type KoloScreenProps = {
@@ -137,6 +138,14 @@ export function KoloScreen({ accent, partyCode, canSync, viewerId, viewerName, o
     const now = new Date().toISOString();
 
     if (canSync && viewerId) {
+      const inviteCopy = buildInviteNotificationCopy({
+        activity: 'kolo',
+        actorName: viewerName,
+        where: nextPlan.route,
+        when: nextPlan.time,
+        note: nextPlan.note,
+      });
+
       void saveActivityVoteSync(partyCode, 'kolo', {
         uid: viewerId,
         displayName: viewerName,
@@ -159,8 +168,8 @@ export function KoloScreen({ accent, partyCode, canSync, viewerId, viewerName, o
         activity: 'kolo',
         actorUid: viewerId,
         actorName: viewerName,
-        title: `${viewerName} vyhlásil kolo`,
-        body: `Kolo: ${viewerName} poslal pozvánku.`,
+        title: inviteCopy.title,
+        body: inviteCopy.body,
       });
       onRoundCreated('kolo', {
         open: true,

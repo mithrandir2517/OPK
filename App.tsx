@@ -44,6 +44,7 @@ import {
 } from './src/backend/opkSync';
 import { saveActivityVoteSync, subscribeActivityVotesSync } from './src/backend/pollSync';
 import { loadJson, removeJson, saveJson, storageKeys } from './src/storage/localStorage';
+import { buildInviteNotificationCopy } from './src/utils/inviteNotification';
 import { getNextRoundExpiryMs, getRoundExpiresAt, isRoundExpired, pruneExpiredPartyRounds } from './src/utils/roundExpiry';
 import { ActivityKey, ActivityRoundState, ActivityVote, ObedState, PartyEvent, PartyMember, PartyRef, PartyState, PivoState, SectionKey, UserProfile } from './src/types';
 import { registerForPushNotificationsAsync } from './src/backend/pushNotifications';
@@ -310,6 +311,8 @@ export default function App() {
   const [partyRefsReady, setPartyRefsReady] = useState(false);
   const [expandedPartyCode, setExpandedPartyCode] = useState<string | null>(null);
   const [pendingPartyCode, setPendingPartyCode] = useState<string | null>(null);
+  const [overviewNotificationTick, setOverviewNotificationTick] = useState(0);
+  const [overviewTargetActivity, setOverviewTargetActivity] = useState<ActivityKey | null>(null);
   const [partyCreateInFlight, setPartyCreateInFlight] = useState(false);
   const [partyUpdateInFlight, setPartyUpdateInFlight] = useState(false);
   const [firebaseUser, setFirebaseUser] = useState<null | { uid: string; displayName: string; email: string | null; photoURL: string | null }>(null);
@@ -672,7 +675,9 @@ export default function App() {
         }
       }
 
-      setSelectedSection(route.section);
+      setSelectedSection('prehled');
+      setOverviewTargetActivity(route.section === 'obed' || route.section === 'pivo' || route.section === 'kolo' ? route.section : null);
+      setOverviewNotificationTick((current) => current + 1);
       setMenuOpen(false);
     },
     [party.inviteCode],
@@ -1007,6 +1012,9 @@ export default function App() {
                   return { ...current, rounds: nextRounds };
                 })
               }
+              initialExpandedActivity={overviewTargetActivity}
+              onInitialExpandedHandled={() => setOverviewTargetActivity(null)}
+              notificationTick={overviewNotificationTick}
             />
           )}
           {selectedSection === 'obed' && (
@@ -1198,6 +1206,9 @@ function OverviewScreen({
   party,
   onOpenSection,
   onRoundCancelled,
+  initialExpandedActivity,
+  onInitialExpandedHandled,
+  notificationTick,
 }: {
   partyCode: string;
   canSync: boolean;
@@ -1207,6 +1218,9 @@ function OverviewScreen({
   party: PartyState;
   onOpenSection: (section: ActivityKey) => void;
   onRoundCancelled: (activity: ActivityKey) => void;
+  initialExpandedActivity: ActivityKey | null;
+  onInitialExpandedHandled: () => void;
+  notificationTick: number;
 }) {
   const [expandedActivity, setExpandedActivity] = useState<ActivityKey | null>(null);
   const [liveParty, setLiveParty] = useState(party);
@@ -1232,6 +1246,14 @@ function OverviewScreen({
   useEffect(() => {
     setLiveParty(party);
   }, [party]);
+
+  useEffect(() => {
+    if (initialExpandedActivity) {
+      setExpandedActivity(initialExpandedActivity);
+      onInitialExpandedHandled();
+    }
+    setShowDetailsFor(null);
+  }, [initialExpandedActivity, notificationTick, onInitialExpandedHandled]);
 
   useEffect(() => {
     if (!canSync || !partyCode.trim()) {
@@ -1418,7 +1440,7 @@ function OverviewScreen({
           const visibleCount = activeInvite ? 1 : 0;
           const summaryText = activeInvite ? inviteLabel : 'Žádné aktivní pozvání';
           const myVote = currentVotes.find((vote) => vote.uid === viewerId);
-          const myChoice = senderDefaultVote?.choice ?? myVote?.choice ?? null;
+          const myChoice = myVote?.choice ?? senderDefaultVote?.choice ?? null;
           const detailOpen = showDetailsFor === card.key;
           const canCancelInvite = activeInvite && round?.openedByUid && round.openedByUid === viewerId;
 
@@ -1712,6 +1734,14 @@ function ObedScreen({
     const now = new Date().toISOString();
 
     if (canSync && viewerId) {
+      const inviteCopy = buildInviteNotificationCopy({
+        activity: 'obed',
+        actorName: viewerName,
+        where: nextPlan.place,
+        when: nextPlan.time,
+        note: nextPlan.note,
+      });
+
       void saveActivityVoteSync(partyCode, 'obed', {
         uid: viewerId,
         displayName: viewerName,
@@ -1734,8 +1764,8 @@ function ObedScreen({
         activity: 'obed',
         actorUid: viewerId,
         actorName: viewerName,
-        title: `${viewerName} vyhlásil oběd`,
-        body: `Oběd: ${viewerName} poslal pozvánku.`,
+        title: inviteCopy.title,
+        body: inviteCopy.body,
       });
       onRoundCreated('obed', {
         open: true,
@@ -2041,6 +2071,14 @@ function PivoScreen({
     const now = new Date().toISOString();
 
     if (canSync && viewerId) {
+      const inviteCopy = buildInviteNotificationCopy({
+        activity: 'pivo',
+        actorName: viewerName,
+        where: nextPlan.place,
+        when: nextPlan.time,
+        note: nextPlan.note,
+      });
+
       void saveActivityVoteSync(partyCode, 'pivo', {
         uid: viewerId,
         displayName: viewerName,
@@ -2063,8 +2101,8 @@ function PivoScreen({
         activity: 'pivo',
         actorUid: viewerId,
         actorName: viewerName,
-        title: `${viewerName} vyhlásil pivo`,
-        body: `Pivo: ${viewerName} poslal pozvánku.`,
+        title: inviteCopy.title,
+        body: inviteCopy.body,
       });
       onRoundCreated('pivo', {
         open: true,
