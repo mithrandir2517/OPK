@@ -1303,13 +1303,12 @@ function OverviewScreen({
       title: 'Oběd',
       icon: 'silverware-fork-knife' as const,
       accent: '#0F766E',
-      plan: obedPlan,
       votes: obedVotes,
       round: liveParty.rounds?.obed ?? party.rounds?.obed ?? null,
       summaryRows: [
-        obedPlan.place || 'Místo není vybráno',
-        obedPlan.time || 'Čas se domluví',
-        obedPlan.note || 'Bez poznámky',
+        (liveParty.rounds?.obed ?? party.rounds?.obed)?.place || obedPlan.place || 'Místo není vybráno',
+        (liveParty.rounds?.obed ?? party.rounds?.obed)?.time || obedPlan.time || 'Čas se domluví',
+        (liveParty.rounds?.obed ?? party.rounds?.obed)?.note || obedPlan.note || 'Bez poznámky',
       ],
     },
     {
@@ -1317,13 +1316,12 @@ function OverviewScreen({
       title: 'Pivo',
       icon: 'glass-mug-variant' as const,
       accent: '#B45309',
-      plan: pivoPlan,
       votes: pivoVotes,
       round: liveParty.rounds?.pivo ?? party.rounds?.pivo ?? null,
       summaryRows: [
-        pivoPlan.place || 'Místo není vybráno',
-        pivoPlan.time || 'Čas se domluví',
-        pivoPlan.note || 'Bez poznámky',
+        (liveParty.rounds?.pivo ?? party.rounds?.pivo)?.place || pivoPlan.place || 'Místo není vybráno',
+        (liveParty.rounds?.pivo ?? party.rounds?.pivo)?.time || pivoPlan.time || 'Čas se domluví',
+        (liveParty.rounds?.pivo ?? party.rounds?.pivo)?.note || pivoPlan.note || 'Bez poznámky',
       ],
     },
     {
@@ -1331,14 +1329,13 @@ function OverviewScreen({
       title: 'Kolo',
       icon: 'bike' as const,
       accent: '#2563EB',
-      plan: {
-        place: 'Okruh po práci',
-        time: 'Dnes 17:30',
-        note: 'Sraz u hospody · 31 km · bez deště',
-      },
       votes: koloVotes,
       round: liveParty.rounds?.kolo ?? party.rounds?.kolo ?? null,
-      summaryRows: ['Okruh po práci', 'Dnes 17:30', 'Sraz u hospody · 31 km'],
+      summaryRows: [
+        (liveParty.rounds?.kolo ?? party.rounds?.kolo)?.place || 'Okruh po práci',
+        (liveParty.rounds?.kolo ?? party.rounds?.kolo)?.time || 'Dnes 17:30',
+        (liveParty.rounds?.kolo ?? party.rounds?.kolo)?.note || 'Sraz u hospody · 31 km',
+      ],
     },
   ];
 
