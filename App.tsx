@@ -27,6 +27,7 @@ import { PartyScreen } from './src/screens/PartyScreen';
 import { ProfilScreen } from './src/screens/ProfilScreen';
 import { ZpravyScreen } from './src/screens/ZpravyScreen';
 import {
+  cancelActivityRoundSync,
   deletePartyRefSync,
   deletePartySync,
   deletePushTokenSync,
@@ -43,6 +44,7 @@ import {
 } from './src/backend/opkSync';
 import { saveActivityVoteSync, subscribeActivityVotesSync } from './src/backend/pollSync';
 import { loadJson, removeJson, saveJson, storageKeys } from './src/storage/localStorage';
+import { getNextRoundExpiryMs, getRoundExpiresAt, isRoundExpired, pruneExpiredPartyRounds } from './src/utils/roundExpiry';
 import { ActivityKey, ActivityRoundState, ActivityVote, ObedState, PartyEvent, PartyMember, PartyRef, PartyState, PivoState, SectionKey, UserProfile } from './src/types';
 import { registerForPushNotificationsAsync } from './src/backend/pushNotifications';
 import {
@@ -276,6 +278,7 @@ function arePartyRoundsEqual(
       (!!firstRound === !!secondRound) &&
       (firstRound?.open ?? false) === (secondRound?.open ?? false) &&
       (firstRound?.openedAt ?? '') === (secondRound?.openedAt ?? '') &&
+      (firstRound?.expiresAt ?? '') === (secondRound?.expiresAt ?? '') &&
       (firstRound?.openedByUid ?? null) === (secondRound?.openedByUid ?? null) &&
       (firstRound?.openedByName ?? '') === (secondRound?.openedByName ?? '') &&
       (firstRound?.place ?? '') === (secondRound?.place ?? '') &&
@@ -325,6 +328,11 @@ export default function App() {
   const showEmptyPartyState = partyRefsReady && partyRefs.length === 0 && isPlaceholderParty;
   const noRealParty = showEmptyPartyState && !joinTargetCode && !expandedPartyCode;
   const canPersistParty = !firebaseUser || partyRefsReady;
+  const roundExpirySignature = [
+    party.rounds?.obed?.open ? party.rounds?.obed?.expiresAt || party.rounds?.obed?.openedAt || '' : '',
+    party.rounds?.pivo?.open ? party.rounds?.pivo?.expiresAt || party.rounds?.pivo?.openedAt || '' : '',
+    party.rounds?.kolo?.open ? party.rounds?.kolo?.expiresAt || party.rounds?.kolo?.openedAt || '' : '',
+  ].join('|');
 
   useEffect(() => {
     let mounted = true;
@@ -402,6 +410,26 @@ export default function App() {
       });
     }
   }, [canPersistParty, firebaseUser, noRealParty, party, partySyncMode, storageReady]);
+
+  useEffect(() => {
+    const prunedParty = pruneExpiredPartyRounds(party);
+    if (prunedParty !== party) {
+      setParty(prunedParty);
+      return;
+    }
+
+    const nextExpiryMs = getNextRoundExpiryMs(party.rounds);
+    if (!nextExpiryMs) {
+      return;
+    }
+
+    const delay = Math.max(1000, nextExpiryMs - Date.now() + 250);
+    const timeout = setTimeout(() => {
+      setParty((current) => pruneExpiredPartyRounds(current));
+    }, delay);
+
+    return () => clearTimeout(timeout);
+  }, [party, roundExpirySignature]);
 
   useEffect(() => {
     if (!storageReady || !firebaseUser || !canPersistParty || noRealParty) {
@@ -972,6 +1000,13 @@ export default function App() {
               viewerName={firebaseUser?.displayName ?? profile.name}
               party={party}
               onOpenSection={setSelectedSection}
+              onRoundCancelled={(activity) =>
+                setParty((current) => {
+                  const nextRounds = { ...(current.rounds ?? {}) };
+                  delete nextRounds[activity];
+                  return { ...current, rounds: nextRounds };
+                })
+              }
             />
           )}
           {selectedSection === 'obed' && (
@@ -1162,6 +1197,7 @@ function OverviewScreen({
   viewerName,
   party,
   onOpenSection,
+  onRoundCancelled,
 }: {
   partyCode: string;
   canSync: boolean;
@@ -1170,6 +1206,7 @@ function OverviewScreen({
   viewerName: string;
   party: PartyState;
   onOpenSection: (section: ActivityKey) => void;
+  onRoundCancelled: (activity: ActivityKey) => void;
 }) {
   const [expandedActivity, setExpandedActivity] = useState<ActivityKey | null>(null);
   const [liveParty, setLiveParty] = useState(party);
@@ -1358,7 +1395,7 @@ function OverviewScreen({
         {activityCards.map((card) => {
           const isExpanded = expandedActivity === card.key;
           const round = card.round;
-          const activeInvite = !!round?.open;
+          const activeInvite = !!round?.open && !isRoundExpired(round);
           const inviteLabel = activeInvite ? `${round?.openedByName || 'Někdo'} · ${formatEventTime(round?.openedAt || '')}` : '';
           const senderDefaultVote =
             activeInvite && round?.openedByUid && round.openedByUid === viewerId
@@ -1383,6 +1420,30 @@ function OverviewScreen({
           const myVote = currentVotes.find((vote) => vote.uid === viewerId);
           const myChoice = senderDefaultVote?.choice ?? myVote?.choice ?? null;
           const detailOpen = showDetailsFor === card.key;
+          const canCancelInvite = activeInvite && round?.openedByUid && round.openedByUid === viewerId;
+
+          const handleCancelInvite = async () => {
+            if (!activeInvite || !canCancelInvite) {
+              return;
+            }
+
+            onRoundCancelled(card.key);
+            setLiveParty((current) => {
+              const nextRounds = { ...(current.rounds ?? {}) };
+              delete nextRounds[card.key];
+              return { ...current, rounds: nextRounds };
+            });
+            setExpandedActivity(null);
+            setShowDetailsFor(null);
+
+            if (canSync) {
+              try {
+                await cancelActivityRoundSync(partyCode, card.key);
+              } catch (error) {
+                console.warn('cancel round failed', error);
+              }
+            }
+          };
 
           return (
             <View key={card.key} style={styles.overviewCard}>
@@ -1392,12 +1453,25 @@ function OverviewScreen({
                     <MaterialCommunityIcons name={card.icon} size={24} color={card.accent} />
                   </View>
                   <View style={styles.planCopy}>
-                    <Text style={styles.cardTitle}>{card.title}</Text>
+                    <View style={styles.planTitleRow}>
+                      <Text style={styles.cardTitle}>{card.title}</Text>
+                      <View
+                        style={[
+                          styles.overviewBadge,
+                          activeInvite
+                            ? { backgroundColor: `${card.accent}15` }
+                            : { backgroundColor: '#F3F4F6' },
+                        ]}
+                      >
+                        <Text style={[styles.overviewBadgeText, { color: activeInvite ? card.accent : '#6B7280' }]}>
+                          {visibleCount}
+                        </Text>
+                      </View>
+                    </View>
                     <Text style={styles.cardMeta}>{summaryText}</Text>
                   </View>
                 </View>
                 <View style={styles.overviewHeaderMeta}>
-                  <Text style={styles.listCount}>{visibleCount}</Text>
                   <MaterialCommunityIcons name={isExpanded ? 'chevron-up' : 'chevron-down'} size={20} color="#6B7280" />
                 </View>
               </Pressable>
@@ -1453,18 +1527,25 @@ function OverviewScreen({
                             );
                           })}
                         </View>
+                        {canCancelInvite ? (
+                          <Pressable style={styles.cancelInviteButton} onPress={handleCancelInvite}>
+                            <MaterialCommunityIcons name="trash-can-outline" size={16} color="#991B1B" />
+                          </Pressable>
+                        ) : null}
                       </View>
-                      <Pressable
-                        style={styles.detailsToggle}
-                        onPress={() => setShowDetailsFor((current) => (current === card.key ? null : card.key))}
-                      >
-                        <Text style={styles.detailsToggleText}>{detailOpen ? 'Skrýt detaily' : 'Detaily'}</Text>
-                        <MaterialCommunityIcons
-                          name={detailOpen ? 'chevron-up' : 'chevron-down'}
-                          size={18}
-                          color="#6B7280"
-                        />
-                      </Pressable>
+                      <View style={styles.overviewCardFooter}>
+                        <Pressable
+                          style={styles.detailsToggle}
+                          onPress={() => setShowDetailsFor((current) => (current === card.key ? null : card.key))}
+                        >
+                          <Text style={styles.detailsToggleText}>{detailOpen ? 'Skrýt detaily' : 'Detaily'}</Text>
+                          <MaterialCommunityIcons
+                            name={detailOpen ? 'chevron-up' : 'chevron-down'}
+                            size={18}
+                            color="#6B7280"
+                          />
+                        </Pressable>
+                      </View>
                       {detailOpen ? (
                         <View style={styles.overviewVotes}>
                           {visibleVotes.map((vote) => (
@@ -1640,6 +1721,7 @@ function ObedScreen({
       void saveActivityRoundSync(partyCode, 'obed', {
         open: true,
         openedAt: now,
+        expiresAt: getRoundExpiresAt(now),
         openedByUid: viewerId,
         openedByName: viewerName,
         place: nextPlan.place,
@@ -1658,6 +1740,7 @@ function ObedScreen({
       onRoundCreated('obed', {
         open: true,
         openedAt: now,
+        expiresAt: getRoundExpiresAt(now),
         openedByUid: viewerId,
         openedByName: viewerName,
         place: nextPlan.place,
@@ -1967,6 +2050,7 @@ function PivoScreen({
       void saveActivityRoundSync(partyCode, 'pivo', {
         open: true,
         openedAt: now,
+        expiresAt: getRoundExpiresAt(now),
         openedByUid: viewerId,
         openedByName: viewerName,
         place: nextPlan.place,
@@ -1985,6 +2069,7 @@ function PivoScreen({
       onRoundCreated('pivo', {
         open: true,
         openedAt: now,
+        expiresAt: getRoundExpiresAt(now),
         openedByUid: viewerId,
         openedByName: viewerName,
         place: nextPlan.place,
@@ -2206,15 +2291,21 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     gap: 8,
   },
-  listCount: {
-    backgroundColor: '#F3F4F6',
+  planTitleRow: {
+    alignItems: 'center',
+    flexDirection: 'row',
+    gap: 8,
+  },
+  overviewBadge: {
+    alignItems: 'center',
     borderRadius: 999,
-    color: '#374151',
-    fontSize: 12,
-    fontWeight: '900',
-    minWidth: 28,
+    minWidth: 24,
     paddingHorizontal: 8,
     paddingVertical: 4,
+  },
+  overviewBadgeText: {
+    fontSize: 12,
+    fontWeight: '900',
     textAlign: 'center',
   },
   overviewExpanded: {
@@ -2225,6 +2316,11 @@ const styles = StyleSheet.create({
   },
   overviewVoteComposer: {
     gap: 8,
+  },
+  overviewCardFooter: {
+    alignItems: 'center',
+    flexDirection: 'row',
+    justifyContent: 'flex-end',
   },
   timeToggle: {
     alignItems: 'center',
@@ -2252,6 +2348,7 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     flexDirection: 'row',
     justifyContent: 'space-between',
+    flex: 1,
     minHeight: 44,
   },
   detailsToggleText: {
@@ -2637,6 +2734,18 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
     minHeight: 48,
     paddingHorizontal: 14,
+  },
+  cancelInviteButton: {
+    alignItems: 'center',
+    backgroundColor: '#FEF2F2',
+    borderColor: '#FCA5A5',
+    borderRadius: 999,
+    borderWidth: 1,
+    height: 44,
+    justifyContent: 'center',
+    marginTop: 2,
+    paddingHorizontal: 0,
+    width: 44,
   },
   planHeader: {
     alignItems: 'center',

@@ -3,6 +3,7 @@ import {
   arrayUnion,
   collection,
   deleteDoc,
+  deleteField,
   arrayRemove,
   doc,
   getDoc,
@@ -28,6 +29,7 @@ import {
   PivoState,
   SavedMemory,
 } from '../types';
+import { getRoundExpiresAt, isRoundExpired } from '../utils/roundExpiry';
 
 const legacyDemoPartyCode = 'OPK-VYSKOV';
 
@@ -133,12 +135,20 @@ function mapPartyData(inviteCode: string, data: Record<string, unknown>): PartyS
     rounds[activity] = {
       open: record.open,
       openedAt: typeof record.openedAt === 'string' ? record.openedAt : '',
+      expiresAt:
+        typeof record.expiresAt === 'string' && record.expiresAt.trim()
+          ? record.expiresAt.trim()
+          : getRoundExpiresAt(typeof record.openedAt === 'string' ? record.openedAt : ''),
       openedByUid: typeof record.openedByUid === 'string' && record.openedByUid.trim() ? record.openedByUid : null,
       openedByName: typeof record.openedByName === 'string' ? record.openedByName : '',
       place: typeof record.place === 'string' ? record.place : '',
       time: typeof record.time === 'string' ? record.time : '',
       note: typeof record.note === 'string' ? record.note : '',
     };
+
+    if (isRoundExpired(rounds[activity])) {
+      delete rounds[activity];
+    }
   });
 
   return {
@@ -621,6 +631,25 @@ export async function saveActivityRoundSync(
     },
     { merge: true },
   );
+}
+
+export async function cancelActivityRoundSync(inviteCode: string, activity: ActivityKey) {
+  if (!firebaseEnabled || !firestore) {
+    return;
+  }
+
+  if (!inviteCode.trim()) {
+    return;
+  }
+
+  if (isLegacyDemoPartyCode(inviteCode)) {
+    return;
+  }
+
+  await updateDoc(doc(firestore, 'parties', inviteCode), {
+    [`rounds.${activity}`]: deleteField(),
+    updatedAt: serverTimestamp(),
+  });
 }
 
 export async function saveObedSync(inviteCode: string, obedState: ObedState) {

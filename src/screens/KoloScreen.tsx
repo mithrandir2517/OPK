@@ -7,6 +7,7 @@ import { subscribeActivityVotesSync } from '../backend/pollSync';
 import { ActivityPanel } from '../components/ActivityPanel';
 import { loadJson, saveJson, storageKeys } from '../storage/localStorage';
 import { ActivityRoundState, ActivityVote } from '../types';
+import { getRoundExpiresAt } from '../utils/roundExpiry';
 
 type KoloScreenProps = {
   accent: string;
@@ -145,6 +146,7 @@ export function KoloScreen({ accent, partyCode, canSync, viewerId, viewerName, o
       void saveActivityRoundSync(partyCode, 'kolo', {
         open: true,
         openedAt: now,
+        expiresAt: getRoundExpiresAt(now),
         openedByUid: viewerId,
         openedByName: viewerName,
         place: nextPlan.route,
@@ -163,6 +165,7 @@ export function KoloScreen({ accent, partyCode, canSync, viewerId, viewerName, o
       onRoundCreated('kolo', {
         open: true,
         openedAt: now,
+        expiresAt: getRoundExpiresAt(now),
         openedByUid: viewerId,
         openedByName: viewerName,
         place: nextPlan.route,

@@ -37,6 +37,7 @@ export type ObedState = {
 export type ActivityRoundState = {
   open: boolean;
   openedAt: string;
+  expiresAt?: string;
   openedByUid: string | null;
   openedByName: string;
   place: string;
