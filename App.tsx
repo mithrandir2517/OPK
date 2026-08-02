@@ -1360,23 +1360,28 @@ function OverviewScreen({
           const round = card.round;
           const activeInvite = !!round?.open;
           const inviteLabel = activeInvite ? `${round?.openedByName || 'Někdo'} · ${formatEventTime(round?.openedAt || '')}` : '';
-          const currentVotes = activeInvite ? card.votes : [];
+          const senderDefaultVote =
+            activeInvite && round?.openedByUid && round.openedByUid === viewerId
+              ? {
+                  uid: viewerId || 'local',
+                  displayName: viewerName,
+                  choice: card.key === 'kolo' ? 'Jedu' : 'Jdu',
+                  updatedAt: round.openedAt || new Date().toISOString(),
+                }
+              : null;
+          const currentVotes =
+            activeInvite && round?.openedAt
+              ? card.votes
+                  .filter((vote) => vote.updatedAt >= round.openedAt)
+                  .concat(senderDefaultVote && !card.votes.some((vote) => vote.uid === senderDefaultVote.uid) ? [senderDefaultVote] : [])
+              : activeInvite
+                ? card.votes
+                : [];
           const visibleVotes = activeInvite ? buildVisibleVotes(currentVotes) : [];
           const visibleCount = activeInvite ? 1 : 0;
           const summaryText = activeInvite ? inviteLabel : 'Žádné aktivní pozvání';
           const myVote = currentVotes.find((vote) => vote.uid === viewerId);
-          const myChoice =
-            card.key === 'kolo'
-              ? myVote?.choice ?? koloReply
-              : card.key === 'obed'
-                ? myVote?.choice ?? obedReply
-                : myVote?.choice ?? pivoReply;
-          const myArrival =
-            card.key === 'kolo'
-              ? myVote?.arrival ?? koloArrival
-              : card.key === 'obed'
-                ? myVote?.arrival ?? obedArrival
-                : myVote?.arrival ?? pivoArrival;
+          const myChoice = senderDefaultVote?.choice ?? myVote?.choice ?? null;
           const detailOpen = showDetailsFor === card.key;
 
           return (
@@ -1426,19 +1431,16 @@ function OverviewScreen({
                             return (
                               <Pressable
                                 key={option}
-                                onPress={async () => {
-                                  if (!viewerId) {
-                                    return;
-                                  }
+                              onPress={async () => {
+                                if (!viewerId) {
+                                  return;
+                                }
 
-                                  if (card.key === 'kolo') {
-                                    setKoloReply(option as 'Jedu' | 'Možná' | 'Nejedu');
+                                if (card.key === 'kolo') {
                                     await saveVote('kolo', option);
                                   } else if (card.key === 'obed') {
-                                    setObedReply(option as PivoState['reply']);
                                     await saveVote('obed', option);
                                   } else {
-                                    setPivoReply(option as PivoState['reply']);
                                     await saveVote('pivo', option);
                                   }
                                 }}
@@ -1626,11 +1628,18 @@ function ObedScreen({
 
   const handleSendInvite = () => {
     const nextPlan = { place, time, note };
+    const now = new Date().toISOString();
 
     if (canSync && viewerId) {
+      void saveActivityVoteSync(partyCode, 'obed', {
+        uid: viewerId,
+        displayName: viewerName,
+        choice: 'Jdu',
+        updatedAt: now,
+      });
       void saveActivityRoundSync(partyCode, 'obed', {
         open: true,
-        openedAt: new Date().toISOString(),
+        openedAt: now,
         openedByUid: viewerId,
         openedByName: viewerName,
         place: nextPlan.place,
@@ -1648,7 +1657,7 @@ function ObedScreen({
       });
       onRoundCreated('obed', {
         open: true,
-        openedAt: new Date().toISOString(),
+        openedAt: now,
         openedByUid: viewerId,
         openedByName: viewerName,
         place: nextPlan.place,
@@ -1946,11 +1955,18 @@ function PivoScreen({
 
   const handleSendInvite = () => {
     const nextPlan = { place, time, note };
+    const now = new Date().toISOString();
 
     if (canSync && viewerId) {
+      void saveActivityVoteSync(partyCode, 'pivo', {
+        uid: viewerId,
+        displayName: viewerName,
+        choice: 'Jdu',
+        updatedAt: now,
+      });
       void saveActivityRoundSync(partyCode, 'pivo', {
         open: true,
-        openedAt: new Date().toISOString(),
+        openedAt: now,
         openedByUid: viewerId,
         openedByName: viewerName,
         place: nextPlan.place,
@@ -1968,7 +1984,7 @@ function PivoScreen({
       });
       onRoundCreated('pivo', {
         open: true,
-        openedAt: new Date().toISOString(),
+        openedAt: now,
         openedByUid: viewerId,
         openedByName: viewerName,
         place: nextPlan.place,

@@ -2,11 +2,11 @@ import { MaterialCommunityIcons } from '@expo/vector-icons';
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { Pressable, StyleSheet, Text, TextInput, View } from 'react-native';
 import { recordPartyEventSync, saveActivityRoundSync } from '../backend/opkSync';
+import { saveActivityVoteSync } from '../backend/pollSync';
 import { subscribeActivityVotesSync } from '../backend/pollSync';
 import { ActivityPanel } from '../components/ActivityPanel';
 import { loadJson, saveJson, storageKeys } from '../storage/localStorage';
-import { ActivityVote } from '../types';
-import { ActivityRoundState } from '../types';
+import { ActivityRoundState, ActivityVote } from '../types';
 
 type KoloScreenProps = {
   accent: string;
@@ -133,11 +133,18 @@ export function KoloScreen({ accent, partyCode, canSync, viewerId, viewerName, o
 
   const handleSendInvite = () => {
     const nextPlan = { route, time, note };
+    const now = new Date().toISOString();
 
     if (canSync && viewerId) {
+      void saveActivityVoteSync(partyCode, 'kolo', {
+        uid: viewerId,
+        displayName: viewerName,
+        choice: 'Jedu',
+        updatedAt: now,
+      });
       void saveActivityRoundSync(partyCode, 'kolo', {
         open: true,
-        openedAt: new Date().toISOString(),
+        openedAt: now,
         openedByUid: viewerId,
         openedByName: viewerName,
         place: nextPlan.route,
@@ -155,7 +162,7 @@ export function KoloScreen({ accent, partyCode, canSync, viewerId, viewerName, o
       });
       onRoundCreated('kolo', {
         open: true,
-        openedAt: new Date().toISOString(),
+        openedAt: now,
         openedByUid: viewerId,
         openedByName: viewerName,
         place: nextPlan.route,
