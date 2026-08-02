@@ -10,6 +10,7 @@ export const storageKeys = {
   pivoState: 'opk:pivoState',
   pivoRoundStarted: 'opk:pivoRoundStarted',
   profile: 'opk:profile',
+  koloState: 'opk:koloState',
   koloVote: 'opk:koloVote',
   koloRoundStarted: 'opk:koloRoundStarted',
   selectedSection: 'opk:selectedSection',

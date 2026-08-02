@@ -1,7 +1,7 @@
 import { MaterialCommunityIcons } from '@expo/vector-icons';
 
 export type ActivityKey = 'obed' | 'pivo' | 'kolo';
-export type SectionKey = ActivityKey | 'kronika' | 'zpravy' | 'profil' | 'party';
+export type SectionKey = 'prehled' | ActivityKey | 'kronika' | 'zpravy' | 'profil' | 'party';
 export type IconName = keyof typeof MaterialCommunityIcons.glyphMap;
 
 export type LunchRestaurant = {
@@ -29,6 +29,16 @@ export type SavedMemory = {
 };
 
 export type ObedState = {
+  place: string;
+  time: string;
+  note: string;
+};
+
+export type ActivityRoundState = {
+  open: boolean;
+  openedAt: string;
+  openedByUid: string | null;
+  openedByName: string;
   place: string;
   time: string;
   note: string;
@@ -74,6 +84,7 @@ export type PartyState = {
   members: PartyMember[];
   inviteCode: string;
   creatorUid: string | null;
+  rounds?: Partial<Record<ActivityKey, ActivityRoundState>>;
 };
 
 export type PartyRef = {

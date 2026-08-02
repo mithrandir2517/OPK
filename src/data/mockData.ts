@@ -1,4 +1,4 @@
-import { ActivityKey, BeerReply, IconName, LunchRestaurant, MemoryItem, NewsItem } from '../types';
+import { ActivityKey, BeerReply, IconName, LunchRestaurant, MemoryItem, NewsItem, SectionKey } from '../types';
 
 export const activityMeta: Record<ActivityKey, { title: string; accent: string; action: string; icon: IconName }> = {
   obed: { title: 'Oběd', accent: '#0F766E', action: 'Dáme oběd?', icon: 'silverware-fork-knife' },
@@ -6,7 +6,8 @@ export const activityMeta: Record<ActivityKey, { title: string; accent: string; 
   kolo: { title: 'Kolo', accent: '#2563EB', action: 'Dáme kolo?', icon: 'bike' },
 };
 
-export const navItems: Array<{ key: ActivityKey; label: string; icon: IconName }> = [
+export const navItems: Array<{ key: SectionKey; label: string; icon: IconName }> = [
+  { key: 'prehled', label: 'Přehled', icon: 'view-dashboard-outline' },
   { key: 'obed', label: 'Oběd', icon: 'silverware-fork-knife' },
   { key: 'pivo', label: 'Pivo', icon: 'glass-mug-variant' },
   { key: 'kolo', label: 'Kolo', icon: 'bike' },

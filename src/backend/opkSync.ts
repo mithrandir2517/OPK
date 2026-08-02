@@ -9,18 +9,48 @@ import {
   getDocFromServer,
   onSnapshot,
   orderBy,
+  limit,
   query,
   serverTimestamp,
   setDoc,
   updateDoc,
 } from 'firebase/firestore';
 import { firestore, firebaseEnabled } from './firebase';
-import { ObedState, PartyEvent, PartyMember, PartyRef, PartyState, PivoState, SavedMemory } from '../types';
+import {
+  ActivityKey,
+  ActivityRoundState,
+  ObedState,
+  PartyEvent,
+  PartyEventType,
+  PartyMember,
+  PartyRef,
+  PartyState,
+  PivoState,
+  SavedMemory,
+} from '../types';
 
 const legacyDemoPartyCode = 'OPK-VYSKOV';
 
 function isLegacyDemoPartyCode(inviteCode: string) {
   return inviteCode.trim() === legacyDemoPartyCode;
+}
+
+function isPartyEventType(value: unknown): value is PartyEventType {
+  return (
+    value === 'obed.round' ||
+    value === 'obed.plan' ||
+    value === 'obed.reply' ||
+    value === 'obed.arrival' ||
+    value === 'pivo.round' ||
+    value === 'pivo.plan' ||
+    value === 'pivo.reply' ||
+    value === 'pivo.arrival' ||
+    value === 'kolo.round' ||
+    value === 'kolo.vote' ||
+    value === 'kolo.arrival' ||
+    value === 'party.created' ||
+    value === 'party.joined'
+  );
 }
 
 function normalizePartyMembers(value: unknown): PartyMember[] {
@@ -86,12 +116,38 @@ function normalizePartyMembers(value: unknown): PartyMember[] {
 }
 
 function mapPartyData(inviteCode: string, data: Record<string, unknown>): PartyState {
+  const rawRounds = data.rounds && typeof data.rounds === 'object' ? (data.rounds as Record<string, unknown>) : {};
+  const rounds: Partial<Record<ActivityKey, ActivityRoundState>> = {};
+
+  (['obed', 'pivo', 'kolo'] as ActivityKey[]).forEach((activity) => {
+    const rawRound = rawRounds[activity];
+    if (!rawRound || typeof rawRound !== 'object') {
+      return;
+    }
+
+    const record = rawRound as Record<string, unknown>;
+    if (typeof record.open !== 'boolean') {
+      return;
+    }
+
+    rounds[activity] = {
+      open: record.open,
+      openedAt: typeof record.openedAt === 'string' ? record.openedAt : '',
+      openedByUid: typeof record.openedByUid === 'string' && record.openedByUid.trim() ? record.openedByUid : null,
+      openedByName: typeof record.openedByName === 'string' ? record.openedByName : '',
+      place: typeof record.place === 'string' ? record.place : '',
+      time: typeof record.time === 'string' ? record.time : '',
+      note: typeof record.note === 'string' ? record.note : '',
+    };
+  });
+
   return {
     name: typeof data.name === 'string' ? data.name : 'Parta Vyškov',
     city: typeof data.city === 'string' ? data.city : 'Vyškov',
     members: normalizePartyMembers(data.members),
     inviteCode: typeof data.inviteCode === 'string' && data.inviteCode.trim() ? data.inviteCode : inviteCode,
     creatorUid: typeof data.creatorUid === 'string' && data.creatorUid.trim() ? data.creatorUid : null,
+    rounds,
   };
 }
 
@@ -338,6 +394,64 @@ export async function recordPartyEventSync(event: Omit<PartyEvent, 'id' | 'creat
   });
 }
 
+export function subscribePartyEventsSync(partyCode: string, onChange: (events: PartyEvent[]) => void) {
+  if (!firebaseEnabled || !firestore) {
+    return () => {};
+  }
+
+  if (!partyCode.trim()) {
+    return () => {};
+  }
+
+  if (isLegacyDemoPartyCode(partyCode)) {
+    return () => {};
+  }
+
+  const eventsQuery = query(
+    collection(firestore, 'parties', partyCode, 'events'),
+    orderBy('createdAt', 'desc'),
+    limit(40),
+  );
+
+  return onSnapshot(eventsQuery, (snapshot) => {
+    const nextEvents = snapshot.docs
+      .map((document) => {
+        const data = document.data() as Record<string, unknown>;
+
+        if (
+          typeof data.partyCode !== 'string' ||
+          !isPartyEventType(data.type) ||
+          typeof data.title !== 'string' ||
+          typeof data.body !== 'string' ||
+          typeof data.actorName !== 'string' ||
+          typeof data.createdAt !== 'string'
+        ) {
+          return null;
+        }
+
+        const nextEvent: PartyEvent = {
+          id: document.id,
+          partyCode: data.partyCode,
+          type: data.type,
+          title: data.title,
+          body: data.body,
+          actorUid: typeof data.actorUid === 'string' ? data.actorUid : null,
+          actorName: data.actorName,
+          createdAt: data.createdAt,
+        };
+
+        if (data.activity === 'obed' || data.activity === 'pivo' || data.activity === 'kolo') {
+          nextEvent.activity = data.activity;
+        }
+
+        return nextEvent;
+      })
+      .filter((item): item is PartyEvent => item !== null);
+
+    onChange(nextEvents);
+  });
+}
+
 export async function removePartyMemberSync(inviteCode: string, member: PartyMember) {
   if (!firebaseEnabled || !firestore) {
     return;
@@ -473,6 +587,35 @@ export async function savePivoSync(inviteCode: string, pivoState: PivoState) {
         place: pivoState.place,
         time: pivoState.time,
         note: pivoState.note,
+      },
+      updatedAt: serverTimestamp(),
+    },
+    { merge: true },
+  );
+}
+
+export async function saveActivityRoundSync(
+  inviteCode: string,
+  activity: ActivityKey,
+  round: ActivityRoundState,
+) {
+  if (!firebaseEnabled || !firestore) {
+    return;
+  }
+
+  if (!inviteCode.trim()) {
+    return;
+  }
+
+  if (isLegacyDemoPartyCode(inviteCode)) {
+    return;
+  }
+
+  await setDoc(
+    doc(firestore, 'parties', inviteCode),
+    {
+      rounds: {
+        [activity]: round,
       },
       updatedAt: serverTimestamp(),
     },
